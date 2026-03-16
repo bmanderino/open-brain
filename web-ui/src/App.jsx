@@ -270,6 +270,22 @@ const css = `
   .entry-source { font-size: 10px; color: var(--accent); opacity: 0.7; }
   .entry-tag { font-size: 10px; color: var(--accent2); opacity: 0.8; }
 
+  .entry-delete {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+  }
+
+  .entry-card:hover .entry-delete { opacity: 1; }
+  .entry-delete:hover { color: var(--red) !important; }
+
   .entry-type {
     font-size: 9px;
     text-transform: uppercase;
@@ -573,6 +589,14 @@ export default function App() {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ingest()
   }
 
+  async function deleteEntry(id, e) {
+    e.stopPropagation()
+    try {
+      await fetch(`${API}/entries/${id}`, { method: 'DELETE' })
+      setEntries(prev => prev.filter(x => x.id !== id))
+    } catch {}
+  }
+
   function formatDate(iso) {
     if (!iso) return ''
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -654,6 +678,7 @@ export default function App() {
                     {e.tags?.map(t => (
                       <span key={t} className="entry-tag">#{t}</span>
                     ))}
+                    <button className="entry-delete" onClick={(ev) => deleteEntry(e.id, ev)} title="delete">✕</button>
                   </div>
                   {e.topics?.length > 0 && (
                     <div className="entry-topics">{e.topics.join(' · ')}</div>
