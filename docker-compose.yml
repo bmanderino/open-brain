@@ -58,6 +58,7 @@ services:
       - OLLAMA_HOST=ollama
       - OLLAMA_PORT=11434
       - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - OLLAMA_LLM_MODEL=llama3.2
       - COLLECTION_NAME=brain
     depends_on:
       - qdrant

@@ -270,6 +270,53 @@ const css = `
   .entry-source { font-size: 10px; color: var(--accent); opacity: 0.7; }
   .entry-tag { font-size: 10px; color: var(--accent2); opacity: 0.8; }
 
+  .entry-type {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(68, 170, 255, 0.08);
+    border: 1px solid rgba(68, 170, 255, 0.2);
+    color: var(--accent);
+    opacity: 0.8;
+  }
+
+  .entry-topics {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-top: 4px;
+  }
+
+  .result-type {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(68, 170, 255, 0.08);
+    border: 1px solid rgba(68, 170, 255, 0.2);
+    color: var(--accent);
+    margin-left: 6px;
+  }
+
+  .result-actions {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .result-actions-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent2);
+    margin-bottom: 4px;
+  }
+
   .right-panel {
     display: flex;
     flex-direction: column;
@@ -481,7 +528,14 @@ export default function App() {
         body: JSON.stringify({ content, tags, source: 'web-ui' }),
       })
       if (!r.ok) throw new Error('Failed')
-      setFeedback({ type: 'ok', msg: '-> stored in brain' })
+      const d = await r.json()
+      const typeLabel = d.metadata?.type && d.metadata.type !== 'other'
+        ? ` [${d.metadata.type.replace('_', ' ')}]`
+        : ''
+      const topicsLabel = d.metadata?.topics?.length
+        ? ` — ${d.metadata.topics.join(', ')}`
+        : ''
+      setFeedback({ type: 'ok', msg: `-> stored in brain${typeLabel}${topicsLabel}` })
       setContent('')
       setTags([])
       loadEntries()
@@ -594,10 +648,16 @@ export default function App() {
                   <div className="entry-meta">
                     <span className="entry-date">{formatDate(e.created_at)}</span>
                     <span className="entry-source">via {e.source}</span>
+                    {e.type && e.type !== 'other' && (
+                      <span className="entry-type">{e.type.replace('_', ' ')}</span>
+                    )}
                     {e.tags?.map(t => (
                       <span key={t} className="entry-tag">#{t}</span>
                     ))}
                   </div>
+                  {e.topics?.length > 0 && (
+                    <div className="entry-topics">{e.topics.join(' · ')}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -653,13 +713,30 @@ export default function App() {
                     <div className="score-bar">
                       <div className="score-fill" style={{ width: `${r.score * 100}%` }} />
                     </div>
+                    {r.metadata?.type && r.metadata.type !== 'other' && (
+                      <span className="result-type">{r.metadata.type.replace('_', ' ')}</span>
+                    )}
                   </div>
                   <div className="result-content">{r.content}</div>
                   <div className="result-meta">
                     <span>{formatDate(r.created_at)}</span>
                     <span>via {r.source}</span>
                     {r.tags?.map(t => <span key={t}>#{t}</span>)}
+                    {r.metadata?.topics?.map(t => (
+                      <span key={t} style={{ color: 'var(--accent)', opacity: 0.6 }}>{t}</span>
+                    ))}
+                    {r.metadata?.people?.map(p => (
+                      <span key={p} style={{ color: 'var(--accent2)', opacity: 0.6 }}>{p}</span>
+                    ))}
                   </div>
+                  {r.metadata?.action_items?.length > 0 && (
+                    <div className="result-actions">
+                      <div className="result-actions-label">action items</div>
+                      {r.metadata.action_items.map((a, j) => (
+                        <div key={j}>- {a}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
