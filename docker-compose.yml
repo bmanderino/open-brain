@@ -1,0 +1,111 @@
+services:
+
+  # -----------------------------------------
+  # Ollama
+  # -----------------------------------------
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./ollama/llm_models:/workspace/llm_models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - brain-net
+
+  # -----------------------------------------
+  # Vector Database
+  # -----------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: open-brain-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - brain-net
+
+  # -----------------------------------------
+  # Brain API (FastAPI)
+  # Handles ingest + semantic search
+  # Talks to Ollama (embeddings) + Qdrant (storage)
+  # -----------------------------------------
+  brain-api:
+    build:
+      context: ./brain-api
+      dockerfile: Dockerfile
+    container_name: open-brain-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - COLLECTION_NAME=brain
+    depends_on:
+      - qdrant
+      - ollama
+    networks:
+      - brain-net
+
+  # -----------------------------------------
+  # MCP Server (Node.js)
+  # Exposes brain to Claude Code via MCP protocol
+  # -----------------------------------------
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: open-brain-mcp
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - BRAIN_API_URL=http://brain-api:8000
+    depends_on:
+      - brain-api
+    networks:
+      - brain-net
+
+  # -----------------------------------------
+  # Web UI (React + Vite)
+  # Browser-based capture and search interface
+  # -----------------------------------------
+  web-ui:
+    build:
+      context: ./web-ui
+      dockerfile: Dockerfile
+    container_name: open-brain-ui
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    environment:
+      - BRAIN_API_URL=http://localhost:8000
+    depends_on:
+      - brain-api
+    networks:
+      - brain-net
+
+volumes:
+  ollama-data:
+  qdrant_data:
+    driver: local
+
+networks:
+  brain-net:
+    driver: bridge
