@@ -11,6 +11,8 @@ services:
     volumes:
       - ollama-data:/root/.ollama
       - ./ollama/llm_models:/workspace/llm_models
+    # NVIDIA GPU acceleration — remove this entire "deploy" block if you don't have an NVIDIA GPU.
+    # On Apple Silicon, Ollama uses Metal automatically with no config needed.
     deploy:
       resources:
         reservations:

@@ -20,7 +20,16 @@ All services run via Docker Compose.
 
 ## Setup
 
-### 1. Start the stack
+### 1. GPU configuration (optional)
+
+**NVIDIA GPU:** No changes needed — the `docker-compose.yml` is pre-configured.
+
+**Apple Silicon (M1/M2/M3):** Remove the `deploy` block from the `ollama` service in
+`docker-compose.yml`. Ollama will use Metal automatically with no config needed.
+
+**CPU only:** Same as above — remove the `deploy` block. Embeddings will be slower but functional.
+
+### 2. Start the stack
 
 ```bash
 docker compose up -d
@@ -34,7 +43,7 @@ Check everything is up:
 docker compose ps
 ```
 
-### 2. Pull the embedding model
+### 3. Pull the embedding model
 
 After the stack is running, pull the embedding model into the Ollama container:
 
@@ -49,9 +58,7 @@ Verify the Brain API is healthy:
 curl http://localhost:8000/health
 ```
 
-### 3. Connect Claude Code
-
-#### CLI (recommended)
+### 4. Connect Claude Code
 
 Edit (or create) `~/.claude.json`:
 
@@ -68,39 +75,11 @@ Edit (or create) `~/.claude.json`:
 
 Restart Claude Code. You should see `open-brain` in the available tools.
 
-#### Remote (e.g. connecting from a Mac to a Windows host)
+### 5. Access the Web UI
 
-Find your Windows machine's local IP:
-
-```powershell
-ipconfig
-```
-
-Look for the IPv4 address on your main network adapter (e.g. `192.168.1.42`).
-
-Edit (or create) `~/.claude.json` on your Mac:
-
-```json
-{
-  "mcpServers": {
-    "open-brain": {
-      "type": "sse",
-      "url": "http://YOUR_WINDOWS_IP:3001/mcp"
-    }
-  }
-}
-```
-
-Restart Claude Code. You should see `open-brain` in the available tools.
-
-### 4. Access the Web UI
-
-Local:
 ```
 http://localhost:5173
 ```
-
-From a remote machine: `http://YOUR_WINDOWS_IP:5173`
 
 ---
 
@@ -116,6 +95,8 @@ Example prompts in Claude Code:
 - "Search my brain for anything about the RPG game architecture"
 - "Add to my brain that I decided to use Qdrant over Pinecone because of the Docker-native setup"
 - "Before we start, check my brain for any context on this project"
+
+Note: It helps to be specific when asking Claude to add context to the brain as, otherwise, it can default to it's own memory.
 
 ---
 
@@ -155,10 +136,6 @@ docker compose down -v   # stop AND wipe all data
 Ollama runs as part of the stack on the `brain-net` Docker network. If embeddings
 fail, check the `ollama` container is running (`docker compose ps`) and that
 `nomic-embed-text` has been pulled (`docker exec ollama ollama pull nomic-embed-text`).
-
-**Mac can't reach Windows services:**
-Make sure Windows Firewall allows inbound connections on ports 3001, 5173, 8000.
-You can add rules in Windows Defender Firewall → Inbound Rules.
 
 **MCP not showing in Claude Code:**
 - Double-check the port is `3001`
