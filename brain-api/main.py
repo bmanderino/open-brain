@@ -28,6 +28,11 @@ OLLAMA_PORT = int(os.getenv("OLLAMA_PORT", 11434))
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "llama3.2")
 COLLECTION = os.getenv("COLLECTION_NAME", "brain")
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if o.strip()
+]
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
@@ -38,9 +43,9 @@ app = FastAPI(title="Open Brain API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type"],
 )
 
 qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)

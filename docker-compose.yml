@@ -6,20 +6,14 @@ services:
   ollama:
     image: ollama/ollama
     container_name: ollama
-    ports:
-      - "11434:11434"
+    # No host port published: the API currently uses the host-installed Ollama on 11434
+    # (OLLAMA_HOST=host.docker.internal), which would conflict. If you want to use this
+    # container instead, set OLLAMA_HOST=ollama on brain-api and publish "127.0.0.1:11434:11434".
     volumes:
       - ollama-data:/root/.ollama
       - ./ollama/llm_models:/workspace/llm_models
-    # NVIDIA GPU acceleration — remove this entire "deploy" block if you don't have an NVIDIA GPU.
-    # On Apple Silicon, Ollama uses Metal automatically with no config needed.
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # Optional: only used if brain-api is switched to OLLAMA_HOST=ollama (see README).
+    # For NVIDIA GPU acceleration add a "deploy" block here (see README).
     restart: unless-stopped
     networks:
       - brain-net
@@ -32,8 +26,8 @@ services:
     container_name: open-brain-qdrant
     restart: unless-stopped
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
@@ -51,11 +45,13 @@ services:
     container_name: open-brain-api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
+      # Browser origins allowed to call the API (comma-separated). Must match the web UI URL.
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      - OLLAMA_HOST=ollama
+      - OLLAMA_HOST=host.docker.internal
       - OLLAMA_PORT=11434
       - OLLAMA_EMBED_MODEL=nomic-embed-text
       - OLLAMA_LLM_MODEL=llama3.2
@@ -67,7 +63,7 @@ services:
       - brain-net
 
   # -----------------------------------------
-  # MCP Server (Node.js)
+  # MCP Server (Python, FastMCP)
   # Exposes brain to Claude Code via MCP protocol
   # -----------------------------------------
   mcp-server:
@@ -77,7 +73,7 @@ services:
     container_name: open-brain-mcp
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       - BRAIN_API_URL=http://brain-api:8000
     depends_on:
@@ -96,7 +92,7 @@ services:
     container_name: open-brain-ui
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     environment:
       - BRAIN_API_URL=http://localhost:8000
     depends_on:
@@ -104,8 +100,28 @@ services:
     networks:
       - brain-net
 
+  # -----------------------------------------
+  # Open WebUI
+  # Browser-based chat UI for Ollama models
+  # -----------------------------------------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      - ollama
+    networks:
+      - brain-net
+
 volumes:
   ollama-data:
+  open-webui-data:
   qdrant_data:
     driver: local
 
