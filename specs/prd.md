@@ -94,6 +94,5 @@ Single-user, local tool, so metrics are qualitative/self-measured:
 
 - **Security:** No authentication. CORS is restricted to the web UI origin and ports bind to `127.0.0.1`, but the stack is still unsafe to expose beyond localhost without adding auth. See gaps doc.
 - **LLM metadata quality:** Small local model may mislabel; failure is silent (falls back to `other`/empty).
-- **Pagination correctness:** `/entries` offset semantics don't match Qdrant's scroll model (see gaps).
 - **Embedding model lock-in:** Changing embed model changes dimension and requires re-embedding all data.
 - Open: Should authentication be added before any non-local use? Should entries be editable? Should search blend keyword and vector scoring?

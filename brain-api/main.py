@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from qdrant_client import QdrantClient
@@ -17,6 +17,10 @@ from qdrant_client.models import (
     Filter,
     FieldCondition,
     MatchValue,
+    PayloadSchemaType,
+    OrderBy,
+    Direction,
+    DatetimeRange,
 )
 
 # Config
@@ -64,6 +68,12 @@ async def startup():
         print(f"Created collection: {COLLECTION}")
     else:
         print(f"Collection '{COLLECTION}' already exists")
+    # Idempotent; needed for order_by on created_at in GET /entries
+    qdrant.create_payload_index(
+        collection_name=COLLECTION,
+        field_name="created_at",
+        field_schema=PayloadSchemaType.DATETIME,
+    )
 
 
 # Models
@@ -278,11 +288,25 @@ async def search(req: SearchRequest):
 
 
 @app.get("/entries")
-async def list_entries(limit: int = 20, offset: int = 0):
+async def list_entries(
+    limit: int = Query(20, ge=1, le=100),
+    before: Optional[str] = None,
+):
+    """Newest-first. Page by passing the previous response's next_before as before."""
+    query_filter = None
+    if before:
+        try:
+            datetime.fromisoformat(before)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="before must be an ISO 8601 timestamp")
+        query_filter = Filter(
+            must=[FieldCondition(key="created_at", range=DatetimeRange(lt=before))]
+        )
     results, _ = qdrant.scroll(
         collection_name=COLLECTION,
+        scroll_filter=query_filter,
         limit=limit,
-        offset=offset,
+        order_by=OrderBy(key="created_at", direction=Direction.DESC),
         with_payload=True,
         with_vectors=False,
     )
@@ -300,8 +324,8 @@ async def list_entries(limit: int = 20, offset: int = 0):
         }
         for r in results
     ]
-    entries.sort(key=lambda x: x["created_at"], reverse=True)
-    return {"entries": entries, "count": len(entries)}
+    next_before = entries[-1]["created_at"] if len(entries) == limit else None
+    return {"entries": entries, "count": len(entries), "next_before": next_before}
 
 
 @app.delete("/entries/{entry_id}")

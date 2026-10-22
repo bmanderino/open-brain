@@ -20,16 +20,16 @@
 
 ## 2. List Recent Entries
 
-**Endpoint:** `GET /entries?limit=20&offset=0`
+**Endpoint:** `GET /entries?limit=20&before=<ISO timestamp>`
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| LIST-001 | The API MUST return `{entries: [...], count: n}`; each entry has `id, content, source, tags, created_at, type, topics, people, action_items` (flat, unlike search's nested `metadata`). | ✅ |
-| LIST-002 | Entries returned MUST be sorted by `created_at` descending. | ⚠️ Sorted only within the fetched page; see gap GAP-001. |
-| LIST-003 | The API MUST support `limit` (default 20). | ✅ |
-| LIST-004 | `offset` MUST allow paging. Currently passed directly as Qdrant's scroll `offset`, which expects a point id/cursor, not an integer; paging is unreliable. | ❌ (bug) |
+| LIST-001 | The API MUST return `{entries: [...], count: n, next_before}`; each entry has `id, content, source, tags, created_at, type, topics, people, action_items` (flat, unlike search's nested `metadata`). | ✅ |
+| LIST-002 | Entries returned MUST be sorted by `created_at` descending. | ✅ Server-side `order_by` on the indexed `created_at` field. |
+| LIST-003 | The API MUST support `limit` (default 20, validated 1–100). | ✅ |
+| LIST-004 | The API MUST allow paging: `before` returns only entries with `created_at` earlier than the timestamp; `next_before` in the response is the value to pass for the next page, or `null` on the last page. | ✅ |
 | LIST-005 | Vectors MUST NOT be returned (`with_vectors=False`). | ✅ |
-| LIST-006 | "Most recent N" MUST be correct across the whole collection. Currently Qdrant scroll order is by internal point id, not time, so "recent" is only correct when total entries ≤ `limit`. | ❌ (bug) |
+| LIST-006 | "Most recent N" MUST be correct across the whole collection. Startup creates a datetime payload index on `created_at` (idempotent) so existing collections work. Entries lacking `created_at` are excluded from this listing. | ✅ |
 
 ## 3. Stats
 

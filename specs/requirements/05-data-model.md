@@ -39,6 +39,7 @@
 - DATA-010: Ingest and search responses nest LLM output under `metadata`; `/entries` returns it flat at the top level. Consumers (UI, MCP) handle each shape separately. Unifying is a possible future cleanup.
 - DATA-011: Embeddings are never returned to clients.
 - DATA-012: Content is stored and embedded as one unit; no chunking.
+- DATA-013: `created_at` has a datetime payload index, created idempotently at API startup, used for `order_by` in `/entries`.
 
 ## 5. Privacy
 
