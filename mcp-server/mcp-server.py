@@ -20,6 +20,7 @@ async def search_brain(
     """Search your personal Open Brain knowledge base using semantic search.
     Use this to recall past thoughts, decisions, notes, or anything stored.
     Phrase the query naturally, e.g. 'RPG game architecture decisions' or 'why I chose FastAPI'.
+    Exact terms such as names, identifiers and error strings are matched too, alongside meaning.
 
     Optional filters: project (the current repo/project name; also returns entries not tied
     to any project, such as general preferences), type (decision, idea, meeting, action_item,
@@ -50,7 +51,8 @@ async def search_brain(
             tags = f" [{', '.join(r['tags'])}]" if r.get("tags") else ""
             date = r.get("created_at", "")[:10] if r.get("created_at") else "unknown"
             proj = f" | project: {r['project']}" if r.get("project") else ""
-            lines.append(f"{i}. (score: {r['score']:.3f} | {date} | via {r['source']}{proj}{tags})")
+            kw = " | exact-term match" if r.get("match") in ("keyword", "both") else ""
+            lines.append(f"{i}. (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{tags})")
             lines.append(f"   {r['content']}")
 
             meta = r.get("metadata", {})

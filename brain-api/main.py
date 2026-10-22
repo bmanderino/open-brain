@@ -1,9 +1,11 @@
 import asyncio
 import json
+import math
 import os
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -17,6 +19,10 @@ from qdrant_client.models import (
     Filter,
     FieldCondition,
     MatchValue,
+    MatchText,
+    TextIndexParams,
+    TextIndexType,
+    TokenizerType,
     PayloadSchemaType,
     OrderBy,
     Direction,
@@ -78,6 +84,16 @@ async def startup():
         collection_name=COLLECTION,
         field_name="created_at",
         field_schema=PayloadSchemaType.DATETIME,
+    )
+    qdrant.create_payload_index(
+        collection_name=COLLECTION,
+        field_name="content",
+        field_schema=TextIndexParams(
+            type=TextIndexType.TEXT,
+            tokenizer=TokenizerType.WORD,
+            min_token_len=2,
+            lowercase=True,
+        ),
     )
     for field in ("project", "type", "source", "tags"):
         qdrant.create_payload_index(
@@ -144,6 +160,7 @@ class SearchRequest(BaseModel):
     tag: Optional[str] = None
     created_after: Optional[str] = None
     created_before: Optional[str] = None
+    mode: Literal["hybrid", "semantic"] = "hybrid"  # hybrid adds exact-term matching
 
 
 class SearchResult(BaseModel):
@@ -153,7 +170,8 @@ class SearchResult(BaseModel):
     tags: list[str]
     project: Optional[str] = None
     created_at: str
-    score: float
+    score: float  # cosine similarity to the query
+    match: str = "semantic"  # semantic | keyword | both
     metadata: Metadata
 
 
@@ -275,6 +293,101 @@ def build_filter(
     return Filter(must=must) if must else None
 
 
+STOPWORDS = {
+    "the", "an", "is", "are", "was", "were", "to", "of", "in", "on", "for", "and", "or",
+    "it", "this", "that", "with", "as", "at", "by", "be", "do", "does", "did", "what",
+    "which", "who", "why", "how", "when", "where", "me", "my", "we", "our", "about",
+}
+RRF_K = 60
+
+
+def tokenize(text: str) -> list[str]:
+    """Mirror the Qdrant word tokenizer used by the content text index."""
+    return [t for t in re.findall(r"\w+", text.lower()) if len(t) >= 2]
+
+
+def cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def keyword_search(query: str, query_filter: Optional[Filter], limit: int) -> list:
+    """Exact-term matches ranked with BM25 (Qdrant 1.11 has no built-in BM25).
+    Candidates are points whose content contains any query term."""
+    terms = [t for t in dict.fromkeys(tokenize(query)) if t not in STOPWORDS]
+    if not terms:
+        return []
+
+    def has_term(term: str) -> FieldCondition:
+        return FieldCondition(key="content", match=MatchText(text=term))
+
+    must = [Filter(should=[has_term(t) for t in terms])]
+    if query_filter:
+        must.append(query_filter)
+    candidates, _ = qdrant.scroll(
+        collection_name=COLLECTION,
+        scroll_filter=Filter(must=must),
+        limit=200,
+        with_payload=True,
+        with_vectors=True,
+    )
+    if not candidates:
+        return []
+
+    total = qdrant.count(collection_name=COLLECTION, exact=True).count
+    df = {
+        t: qdrant.count(
+            collection_name=COLLECTION, count_filter=Filter(must=[has_term(t)]), exact=True
+        ).count
+        for t in terms
+    }
+    docs = [tokenize(c.payload["content"]) for c in candidates]
+    avg_len = sum(len(d) for d in docs) / len(docs)
+    k1, b = 1.2, 0.75
+
+    def bm25(doc: list[str]) -> float:
+        score = 0.0
+        for t in terms:
+            tf = doc.count(t)
+            if not tf:
+                continue
+            idf = math.log(1 + (total - df[t] + 0.5) / (df[t] + 0.5))
+            score += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * len(doc) / avg_len))
+        return score
+
+    ranked = sorted(zip(candidates, docs), key=lambda cd: bm25(cd[1]), reverse=True)
+    return [c for c, _ in ranked[:limit]]
+
+
+def fuse(vector_hits: list, keyword_hits: list, embedding: list[float], limit: int) -> list:
+    """Reciprocal rank fusion. Returns (point, cosine score, match) in fused order, where
+    match says which rankings the point appeared in. score stays cosine similarity so
+    it means the same thing as in semantic mode."""
+    fused: dict[str, float] = {}
+    points: dict[str, object] = {}
+    cosines: dict[str, float] = {}
+    sources: dict[str, set] = {}
+    for rank, hit in enumerate(vector_hits):
+        key = str(hit.id)
+        fused[key] = fused.get(key, 0.0) + 1 / (RRF_K + rank + 1)
+        points[key], cosines[key] = hit, hit.score
+        sources.setdefault(key, set()).add("semantic")
+    for rank, hit in enumerate(keyword_hits):
+        key = str(hit.id)
+        fused[key] = fused.get(key, 0.0) + 1 / (RRF_K + rank + 1)
+        points.setdefault(key, hit)
+        if key not in cosines:
+            cosines[key] = cosine(embedding, hit.vector)
+        sources.setdefault(key, set()).add("keyword")
+    order = sorted(fused, key=lambda k: fused[k], reverse=True)[:limit]
+    return [
+        (points[k], cosines[k], "both" if len(sources[k]) == 2 else next(iter(sources[k])))
+        for k in order
+    ]
+
+
 # Routes
 
 @app.get("/health")
@@ -302,13 +415,13 @@ async def ingest(req: IngestRequest):
             scope = FieldCondition(key="project", match=MatchValue(value=project))
         else:
             scope = IsEmptyCondition(is_empty=PayloadField(key="project"))
-        top = qdrant.search(
+        top = qdrant.query_points(
             collection_name=COLLECTION,
-            query_vector=embedding,
+            query=embedding,
             limit=1,
             query_filter=Filter(must=[scope]),
             with_payload=True,
-        )
+        ).points
         if top and top[0].score >= DEDUP_THRESHOLD:
             hit = top[0]
             return IngestResponse(
@@ -383,13 +496,20 @@ async def search(req: SearchRequest):
         created_before=req.created_before,
     )
 
-    hits = qdrant.search(
+    pool = min(req.limit * 3, 100)  # candidates per ranking before fusion
+    vector_hits = qdrant.query_points(
         collection_name=COLLECTION,
-        query_vector=embedding,
-        limit=req.limit,
+        query=embedding,
+        limit=pool if req.mode == "hybrid" else req.limit,
         query_filter=query_filter,
         with_payload=True,
-    )
+    ).points
+
+    if req.mode == "semantic":
+        ranked = [(hit, hit.score, "semantic") for hit in vector_hits]
+    else:
+        keyword_hits = keyword_search(req.query, query_filter, pool)
+        ranked = fuse(vector_hits, keyword_hits, embedding, req.limit)
 
     results = [
         SearchResult(
@@ -399,7 +519,8 @@ async def search(req: SearchRequest):
             tags=hit.payload.get("tags", []),
             project=hit.payload.get("project"),
             created_at=hit.payload.get("created_at", ""),
-            score=hit.score,
+            score=score,
+            match=match,
             metadata=Metadata(
                 type=hit.payload.get("type", "other"),
                 topics=hit.payload.get("topics", []),
@@ -407,7 +528,7 @@ async def search(req: SearchRequest):
                 action_items=hit.payload.get("action_items", []),
             ),
         )
-        for hit in hits
+        for hit, score, match in ranked
     ]
 
     return SearchResponse(query=req.query, results=results)
