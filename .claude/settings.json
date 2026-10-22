@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true"
+          }
+        ]
+      }
+    ]
+  }
+}
