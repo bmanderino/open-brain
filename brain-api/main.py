@@ -14,23 +14,23 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
+    DatetimeRange,
+    Direction,
     Distance,
+    FieldCondition,
+    Filter,
+    IsEmptyCondition,
+    MatchText,
+    MatchValue,
+    OrderBy,
+    PayloadField,
+    PayloadSchemaType,
     PointStruct,
     PointVectors,
-    VectorParams,
-    Filter,
-    FieldCondition,
-    MatchValue,
-    MatchText,
     TextIndexParams,
     TextIndexType,
     TokenizerType,
-    PayloadSchemaType,
-    OrderBy,
-    Direction,
-    DatetimeRange,
-    IsEmptyCondition,
-    PayloadField,
+    VectorParams,
 )
 
 # Config
@@ -281,7 +281,7 @@ def get_point(entry_id: str, with_vectors: bool = False):
     try:
         uuid.UUID(entry_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="entry id must be a UUID")
+        raise HTTPException(status_code=422, detail="entry id must be a UUID") from None
     found = qdrant.retrieve(
         collection_name=COLLECTION,
         ids=[entry_id],
@@ -299,7 +299,7 @@ def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
     try:
         datetime.fromisoformat(value)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"{name} must be an ISO 8601 timestamp")
+        raise HTTPException(status_code=422, detail=f"{name} must be an ISO 8601 timestamp") from None
     return value
 
 

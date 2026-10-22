@@ -247,7 +247,7 @@ curl "http://localhost:8000/entries?limit=10&project=open-brain"
 
 ---
 
-## Running the tests
+## Running the tests and lint
 
 The API tests run against an in-memory Qdrant with Ollama faked, so they need no running stack:
 
@@ -260,6 +260,17 @@ pytest
 
 They cover ordering and paging, filters, dedup, hybrid search, metadata failures, edit/delete,
 export/import, and health. The MCP server and web UI have no tests yet.
+
+Lint with [ruff](https://docs.astral.sh/ruff/) (installed by `requirements-dev.txt`; config in
+`ruff.toml`) from the repo root:
+
+```bash
+ruff check .
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests:
+ruff, the API tests (Python 3.12), a web UI production build, and `docker compose config`
+to validate the compose file.
 
 ---
 

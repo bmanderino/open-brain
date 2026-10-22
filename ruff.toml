@@ -1,0 +1,15 @@
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# Long lines are mostly the LLM prompt and tool docstrings, which read better unwrapped.
+ignore = [
+    "E501",
+    "UP007",  # keep Optional[X]; the codebase uses it throughout
+    "UP017",  # keep timezone.utc
+    "B905",  # zip() without strict= is fine for the equal-length vectors in cosine()
+]
+
+[lint.isort]
+known-first-party = ["main"]

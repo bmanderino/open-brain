@@ -77,7 +77,9 @@
 ### Quality
 | ID | Requirement | Status |
 |----|-------------|--------|
-| NFR-040 | API tests (pytest, `brain-api/tests`) run against an in-memory Qdrant with Ollama's embedding and metadata calls faked; they cover the API's behavior end to end and run in under a second. There is still no linting, CI, or MCP-server/web-UI test coverage. | ⚠️ |
+| NFR-040 | API tests (pytest, `brain-api/tests`) run against an in-memory Qdrant with Ollama's embedding and metadata calls faked; they cover the API's behavior end to end and run in under a second. There is no MCP-server or web-UI test coverage. | ⚠️ |
+| NFR-042 | Python code MUST pass `ruff check` with the rules in `ruff.toml` (E, F, W, I, B, UP; E501, UP007, UP017, B905 ignored). Ruff is pinned in `brain-api/requirements-dev.txt`. There is no auto-formatter. | ✅ |
+| NFR-043 | CI (GitHub Actions, `.github/workflows/ci.yml`) MUST run on pushes to `main` and on pull requests: ruff, the API tests on Python 3.12, a web UI production build (`npm run build`), and `docker compose config -q`. It does not build the Docker images or run the stack. | ✅ |
 | NFR-041 | Dependencies are version-pinned (API) or lower-bounded (`mcp[cli]>=1.8.0,<2`; v2 renamed FastMCP and breaks the server). | ✅ / ⚠️ |
 
 ### Compatibility

@@ -14,7 +14,7 @@ def export(client):
 
 
 def do_import(client, lines, **params):
-    body = "\n".join(l if isinstance(l, str) else json.dumps(l) for l in lines)
+    body = "\n".join(ln if isinstance(ln, str) else json.dumps(ln) for ln in lines)
     r = client.post("/import", content=body, params=params)
     assert r.status_code == 200, r.text
     return r.json()
@@ -42,12 +42,12 @@ def test_export_covers_more_than_one_batch(client, add):
 def test_restore_is_faithful(client, add):
     add("alpha", project="p", tags=["a"])
     add("beta")
-    original = sorted(export(client), key=lambda l: l["id"])
-    for l in original:
-        client.delete(f"/entries/{l['id']}")
+    original = sorted(export(client), key=lambda rec: rec["id"])
+    for rec in original:
+        client.delete(f"/entries/{rec['id']}")
     result = do_import(client, original)
     assert result == {"imported": 2, "skipped_existing": 0, "reextracted": 0, "failed": []}
-    assert sorted(export(client), key=lambda l: l["id"]) == original
+    assert sorted(export(client), key=lambda rec: rec["id"]) == original
 
 
 def test_reimport_skips_existing(client, add):
@@ -88,7 +88,7 @@ def test_missing_or_failed_metadata_is_extracted(client, ollama):
     ]
     r = do_import(client, lines)
     assert r["imported"] == 2 and r["reextracted"] == 2 and ollama.extract_calls == 2
-    assert {l["metadata"]["type"] for l in export(client)} == {"decision"}
+    assert {rec["metadata"]["type"] for rec in export(client)} == {"decision"}
 
 
 def test_import_keeps_created_at_and_defaults_id(client):
@@ -119,7 +119,7 @@ def test_bad_lines_reported_not_fatal(client):
     r = do_import(client, lines)
     assert r["imported"] == 3
     assert [f["line"] for f in r["failed"]] == [2, 3, 4, 5, 7]
-    assert "repeat id" not in {l["content"] for l in export(client)}
+    assert "repeat id" not in {rec["content"] for rec in export(client)}
 
 
 def test_embedding_failure_reported_per_line(client, ollama):

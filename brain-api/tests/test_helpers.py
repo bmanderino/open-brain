@@ -1,5 +1,6 @@
-import main
 from conftest import fake_embed
+
+import main
 
 
 def test_metadata_drops_placeholder_values():

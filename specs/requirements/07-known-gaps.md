@@ -23,7 +23,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | GAP-015 | P3 | ~~`ingest` returns `req.tags` that may be `None` if client sends `null`; typed `list[str]`.~~ **Resolved** | `main.py` | Done. |
 | GAP-016 | P3 | Inconsistent response shapes (`metadata` nested vs flat). | See DATA-010 | Unify under `metadata`. |
 | GAP-017 | P3 | Non-standard fixed fonts referenced but may not be loaded; no responsive layout. | `App.jsx` CSS | Verify `index.html` font links; add breakpoints. |
-| GAP-018 | P3 | ~~No tests, CI, or lint.~~ **Partly resolved:** pytest suite for the API (73 tests, in-memory Qdrant, faked Ollama). CI, lint, and MCP-server/web-UI tests remain. | repo | Add CI and lint; test the MCP wrappers. |
+| GAP-018 | P3 | ~~No tests, CI, or lint.~~ **Partly resolved:** pytest suite for the API (73 tests, in-memory Qdrant, faked Ollama), ruff lint, and GitHub Actions CI. MCP-server and web-UI tests (and a web-UI linter) remain. | repo | Test the MCP wrappers; add an ESLint config for the UI. |
 
 ## Candidate Features (not committed)
 

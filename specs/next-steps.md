@@ -83,6 +83,6 @@ Auth (FEAT-007) matters only if this is ever exposed beyond localhost. All ports
 
 ## Suggested process
 
-**Status:** every priority item above is done, and the API has a pytest suite (`brain-api/tests`, see the README). Remaining: CI, linting, tests for the MCP server and web UI, and the leftovers noted in each item.
+**Status:** every priority item above is done, and the API has a pytest suite (`brain-api/tests`, see the README). CI (GitHub Actions) and ruff linting are in place. Remaining: tests for the MCP server and web UI, a web UI linter, and the leftovers noted in each item.
 
 _Original advice:_ start with #1, since it's small and fixes something already broken. Add pytest coverage for the API with Ollama and Qdrant mocked as you go (GAP-018), starting with whatever you touch. There are no tests today, so each change is currently unverified except by hand.
