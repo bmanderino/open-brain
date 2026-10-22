@@ -23,11 +23,11 @@
 
 ## 2. List Recent Entries
 
-**Endpoint:** `GET /entries?limit=20&before=<ISO timestamp>`; also accepts `after`, `project`, `include_unscoped`, `type`, `tag`, `source` (same semantics as search, SRCH-012)
+**Endpoint:** `GET /entries?limit=20&before=<ISO timestamp>`; also accepts `after`, `project`, `include_unscoped`, `type`, `tag`, `source` (same semantics as search, SRCH-012) and `pinned=true` (PIN-004)
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| LIST-001 | The API MUST return `{entries: [...], count: n, next_before}`; each entry has `id, content, source, tags, project, created_at, type, topics, people, action_items` (flat, unlike search's nested `metadata`). | ✅ |
+| LIST-001 | The API MUST return `{entries: [...], count: n, next_before}`; each entry has `id, content, source, tags, project, pinned, created_at, type, topics, people, action_items` (flat, unlike search's nested `metadata`). | ✅ |
 | LIST-002 | Entries returned MUST be sorted by `created_at` descending. | ✅ Server-side `order_by` on the indexed `created_at` field. |
 | LIST-003 | The API MUST support `limit` (default 20, validated 1–100). | ✅ |
 | LIST-004 | The API MUST allow paging: `before` returns only entries with `created_at` earlier than the timestamp; `next_before` in the response is the value to pass for the next page, or `null` on the last page. | ✅ |
@@ -56,3 +56,17 @@
 | HLTH-002 | Health MUST probe dependencies: `qdrant{ok, collection_exists}` (lists collections) and `ollama{ok, embed_model_present, llm_model_present}` (`GET /api/tags` with a 3 s timeout; a bare model name matches `:latest`). Failures are reported with `error`, never raised. | ✅ |
 | HLTH-004 | `status` MUST be `ok` only when Qdrant is reachable with the collection present and Ollama is reachable with both models installed; otherwise `degraded`. A degraded status still returns HTTP 200 so the web UI's online indicator keeps meaning "the API is up". | ✅ |
 | HLTH-003 | The web UI uses this endpoint for its online/offline indicator. | ✅ |
+
+## 5. Session Context
+
+**Endpoint:** `GET /context?project=&recent=5&max_pinned=20&format=json|text`
+
+What a session should know up front, in one small response. Built to be injected by a Claude Code `SessionStart` hook (README) and exposed to the model as the `get_context` MCP tool.
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| CTX-001 | The API MUST return pinned entries first (newest first, at most `max_pinned`, default 20, validated 0-100), then the newest unpinned entries (`recent`, default 5, validated 0-50). Pinned entries never repeat in `recent`. | ✅ |
+| CTX-002 | With `project`, the result covers that project's entries plus unscoped ones. Without it, only unscoped entries are returned (not every project's), so a session with no project does not receive other projects' context. | ✅ |
+| CTX-003 | The JSON form MUST be `{project, pinned[], pinned_total, recent[]}` with entries in the flat `/entries` shape. `pinned_total` counts all matching pins even when the list is capped. | ✅ |
+| CTX-004 | `format=text` MUST return compact `text/plain`: a title, a `Pinned:` and a `Recent:` section with one line per entry (date, project or `general`, whitespace collapsed, truncated to 400 characters), a note when pins were hidden by the cap, and a closing line telling the model to save with `add_to_brain` (with the project) and search for anything older. | ✅ |
+| CTX-005 | The text form is the only capture nudge available to hooks: as far as Claude Code documents, `SessionStart` (and `UserPromptSubmit`) stdout is added to the model's context, but `SessionEnd` output is not, so the saving reminder rides along with the context. See the README for what each hook event can and cannot do. | ✅ |

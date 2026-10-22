@@ -51,7 +51,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | ID | Requirement | Status |
 |----|-------------|--------|
 | EXP-001 | The API MUST stream every entry as JSONL (`application/x-ndjson`, one JSON object per line, no guaranteed order) with a `Content-Disposition` attachment filename `open-brain-<UTC timestamp>.jsonl`. | ✅ |
-| EXP-002 | Each line MUST contain `id, content, source, tags, project, created_at, metadata{type,topics,people,action_items}, metadata_status`. Vectors MUST NOT be included, so exports are independent of the embedding model. | ✅ |
+| EXP-002 | Each line MUST contain `id, content, source, tags, project, pinned, created_at, metadata{type,topics,people,action_items}, metadata_status`. Vectors MUST NOT be included, so exports are independent of the embedding model. | ✅ |
 | EXP-003 | Entries MUST be read in batches of 100 rather than loaded into memory at once. | ✅ |
 | EXP-004 | Export has no filters (project, date); it always covers the whole collection. | ❌ |
 
@@ -61,7 +61,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| IMP-001 | Each non-blank line MUST be a JSON object with at least non-empty `content`; `id, source, tags, project, created_at, metadata, metadata_status` are optional and unknown keys are ignored. | ✅ |
+| IMP-001 | Each non-blank line MUST be a JSON object with at least non-empty `content`; `id, source, tags, project, pinned, created_at, metadata, metadata_status` are optional (a missing `pinned` means unpinned) and unknown keys are ignored. | ✅ |
 | IMP-002 | Every imported entry MUST be re-embedded with the current embedding model. | ✅ |
 | IMP-003 | `id` and `created_at` MUST be preserved when valid (a missing `id` gets a new UUID, a missing `created_at` gets the import time). An `id` already in the collection is skipped (`skipped_existing`) unless `overwrite=true`, which replaces it. Re-importing a file is therefore safe. | ✅ |
 | IMP-004 | Metadata MUST be reused when the line has `metadata` and `metadata_status` is not `failed`; otherwise it is extracted (counted in `reextracted`). Reused metadata passes the same cleanup as extracted metadata (META-008). | ✅ |
@@ -75,7 +75,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, reextract?, type?, topics?, people?, action_items?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
+| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, pinned?, reextract?, type?, topics?, people?, action_items?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
 | UPD-002 | Changing `content` MUST re-embed the entry and re-run metadata extraction (concurrently), replacing the vector and the type/topics/people/action_items/metadata_status. `id`, `created_at`, and `source` are preserved. Empty content returns 400. | ✅ |
 | UPD-003 | `tags` replaces the whole list. `project` set to `null` or `""` removes the project key (the entry becomes unscoped). | ✅ |
 | UPD-004 | `reextract: true` MUST re-run metadata extraction without changing content or the vector, so entries with `metadata_status: failed` can be repaired. | ✅ |
@@ -83,3 +83,17 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | UPD-006 | `type`, `topics`, `people`, and `action_items` MAY be hand-edited. A list replaces the old one and `[]` clears it; `null` or an omitted field changes nothing. Lists get the same placeholder cleanup as extracted metadata (META-008). An invalid `type` returns HTTP 422 listing the valid values (extraction, by contrast, silently coerces to `other`). | ✅ |
 | UPD-007 | Any hand-edited metadata field sets `metadata_status` to `"manual"`, including on an entry that had `failed`. The status is not `"failed"`, so import reuses the metadata without calling the LLM (IMP-004). | ✅ |
 | UPD-008 | If one request both triggers extraction (content change or `reextract`) and hand-edits fields, the hand edits win for those fields and the remaining fields come from the extraction. A later `reextract` overwrites manual edits. | ✅ |
+
+## 7. Pinning
+
+A pinned entry is a short, lasting fact that every session should see without searching ("use pnpm", "this repo targets Windows"). `GET /context` (CTX-001) returns pinned entries first.
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| PIN-001 | `POST /ingest` MUST accept an optional boolean `pinned` (default false). The flag is stored as `pinned: true` in the payload; unpinned entries carry no `pinned` key, like unscoped entries carry no `project`, so entries stored before this feature need no migration. | ✅ |
+| PIN-002 | `PATCH /entries/{id}` MUST accept `pinned`: `true` pins, `false` unpins (removes the key), and an omitted or `null` value changes nothing. | ✅ |
+| PIN-003 | `pinned` (boolean, `false` when absent) MUST be returned by ingest (including the duplicate response), search, `/entries`, `PATCH`, and `/export`, and accepted by `/import`, so a backup and restore keeps pins. | ✅ |
+| PIN-004 | `GET /entries` MUST accept `pinned=true` to list only pinned entries. A `pinned` boolean payload index is created idempotently at startup. | ✅ |
+| PIN-005 | Pinning does not affect dedup (a near-duplicate of an existing entry is still not stored, and the duplicate response shows whether the existing entry is pinned). The MCP tool tells the model to pin the existing entry instead. | ✅ |
+| PIN-006 | An unscoped pin (no `project`) is global: it appears in every project's context. A pin with a `project` appears only in that project's context. | ✅ |
+| PIN-007 | There is no web UI control for pinning yet; the UI neither shows nor sets `pinned`. | ❌ |

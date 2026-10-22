@@ -42,12 +42,17 @@ def test_all_tools_registered_with_descriptions(run, tools):
     names = {t.name: t for t in listed}
     assert set(names) == {
         "search_brain", "add_to_brain", "update_brain_entry", "list_brain", "brain_stats",
+        "get_context",
     }
     # Claude reads these descriptions to decide how to call the tools
     assert "project" in names["search_brain"].description
     assert "project" in names["add_to_brain"].description
     assert "force" in names["add_to_brain"].description
     assert "entry_id" in names["update_brain_entry"].description
+    assert "pinned" in names["add_to_brain"].description
+    assert "pinned" in names["update_brain_entry"].description
+    # Claude decides when to call get_context from this text
+    assert "start of a session" in " ".join(names["get_context"].description.split())
 
 
 def test_no_delete_tool(run, tools):
@@ -281,6 +286,75 @@ def test_list_output_includes_ids_and_project(run, tools, api):
 def test_list_api_error(run, tools, api):
     api.reply("GET", "/entries", status=500, body="boom")
     assert run(tools.list_brain()) == "Error listing brain: boom"
+
+
+# pinned
+
+def test_add_sends_pinned_only_when_true(run, tools, api):
+    api.reply("POST", "/ingest", body={"id": ID, "metadata": {}})
+    run(tools.add_to_brain("note"))
+    assert "pinned" not in api.last_json()
+    run(tools.add_to_brain("note", pinned=True))
+    assert api.last_json()["pinned"] is True
+
+
+def test_add_output_says_pinned(run, tools, api):
+    api.reply("POST", "/ingest", body={"id": ID, "pinned": True, "metadata": {}})
+    assert "Pinned: yes" in run(tools.add_to_brain("note", pinned=True))
+
+
+def test_add_duplicate_suggests_pinning_the_existing_entry(run, tools, api):
+    dup = {"id": ID, "content": "old", "duplicate_of": ID, "duplicate_score": 0.97, "metadata": {}}
+    api.reply("POST", "/ingest", body=dup)
+    assert "pinned=True" in run(tools.add_to_brain("old", pinned=True)).split("force=True")[1]
+    assert "To pin" not in run(tools.add_to_brain("old"))
+    api.reply("POST", "/ingest", body={**dup, "pinned": True})
+    assert "To pin" not in run(tools.add_to_brain("old", pinned=True))
+
+
+def test_update_sends_pinned_false_to_unpin(run, tools, api):
+    api.reply("PATCH", f"/entries/{ID}", body=entry())
+    run(tools.update_brain_entry(ID, pinned=False))
+    assert api.last_json() == {"reextract": False, "pinned": False}
+    run(tools.update_brain_entry(ID, tags=["x"]))
+    assert "pinned" not in api.last_json()
+
+
+def test_update_output_says_pinned(run, tools, api):
+    api.reply("PATCH", f"/entries/{ID}", body=entry(pinned=True))
+    assert "Pinned: yes" in run(tools.update_brain_entry(ID, pinned=True))
+
+
+def test_list_pinned_filter_and_flag(run, tools, api):
+    api.reply("GET", "/entries", body={"entries": [entry(pinned=True), entry(id="b")]})
+    out = run(tools.list_brain(pinned=True))
+    assert api.last_params() == {"limit": "10", "pinned": "true"}
+    assert out.count("| pinned") == 1
+
+
+def test_search_flags_pinned_results(run, tools, api):
+    api.reply("POST", "/search", body={"results": [result(pinned=True), result(id="b")]})
+    assert run(tools.search_brain("q")).count("| pinned") == 1
+
+
+# get_context
+
+def test_get_context_requests_text_and_returns_it_verbatim(run, tools, api):
+    api.reply("GET", "/context", body="Open Brain context:\n\n- (2026-10-22, general) hi")
+    out = run(tools.get_context(project="open-brain", recent=3))
+    assert api.last_params() == {"recent": "3", "format": "text", "project": "open-brain"}
+    assert out == "Open Brain context:\n\n- (2026-10-22, general) hi"
+
+
+def test_get_context_without_project_omits_it(run, tools, api):
+    api.reply("GET", "/context", body="ctx")
+    run(tools.get_context())
+    assert api.last_params() == {"recent": "5", "format": "text"}
+
+
+def test_get_context_api_error(run, tools, api):
+    api.reply("GET", "/context", status=500, body="boom")
+    assert run(tools.get_context()) == "Error fetching context: boom"
 
 
 # brain_stats

@@ -138,10 +138,11 @@ the UI from a different URL, set `CORS_ORIGINS` (comma-separated) on `brain-api`
 
 Once connected, Claude Code can:
 
+- **`get_context`** — pinned entries plus the most recent ones for a project, in one compact response; meant for the start of a session
 - **`search_brain`** — semantic search over everything you've stored; optional `project`, `type`, `tag`, `source` filters
-- **`add_to_brain`** — store thoughts/decisions during a session; optional `tags` and `project`
-- **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag` filters
-- **`update_brain_entry`** — fix an entry's content, tags, project, or its extracted type/topics/people/action items, or re-run metadata extraction
+- **`add_to_brain`** — store thoughts/decisions during a session; optional `tags`, `project`, and `pinned`
+- **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag`, `pinned` filters
+- **`update_brain_entry`** — fix an entry's content, tags, project, pinned state, or its extracted type/topics/people/action items, or re-run metadata extraction
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
 Claude cannot delete entries; use the web UI for that.
@@ -174,6 +175,55 @@ repos doesn't mix. Searching or listing with a `project` returns that project's 
 entries with no project**, so general preferences and decisions still apply everywhere. Entries
 saved before this feature have no project and are treated the same way. Tell Claude to pass the
 repo name as `project` when adding (or put it in your `CLAUDE.md`).
+
+### Pinned entries and session context
+
+Some facts should be in front of Claude every session, not found only when a search happens to
+match: "use pnpm, not npm", "this repo targets Windows", "avoid em dashes in docs". Mark them
+**pinned** (`pinned=True` on `add_to_brain`, or `update_brain_entry(entry_id, pinned=True)` on an
+existing entry; `"pinned": true` on `POST /ingest` and `PATCH /entries/{id}`). Keep pins few and short.
+
+`get_context` (or `GET /context?project=<name>`) returns the pinned entries first, then the five
+newest others, for that project plus entries with no project. A pin with no project is global and
+shows up everywhere; a pin with a project shows up only there. Without a `project`, only entries
+with no project are returned. At most 20 pins are shown (`max_pinned`), and the response says
+when more were hidden. `recent` sets how many recent entries follow (default 5). Add
+`format=text` for compact plain text, or leave it off for JSON (`pinned`, `pinned_total`,
+`recent`). Pins are kept by `/export` and `/import`.
+
+#### Loading context automatically (SessionStart hook)
+
+Without a hook the brain is only used when someone remembers to ask. A Claude Code `SessionStart`
+hook can load this context at the start of every session. Add it to `.claude/settings.json` in a
+repo (or `~/.claude/settings.json` for every repo); the project name is the repo folder name:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Claude Code adds a `SessionStart` hook's output to the session as context. The command prints
+nothing, and does not fail the session, if the API is down. The context text ends with a reminder
+to save decisions with `add_to_brain` and the project name, which is how saving gets prompted.
+Your `CLAUDE.md` should still say to pass `project` when saving.
+
+What hooks can't do: per Claude Code's hook docs, only `SessionStart` and `UserPromptSubmit`
+output reaches the model, so a `SessionEnd` or `PreCompact` hook cannot nudge Claude to save
+anything. A `Stop` hook can make Claude continue, but it fires after every turn, so it is too
+noisy to use for capture. That's why the reminder lives in the injected context instead.
 
 Note: It helps to be specific when asking Claude to add context to the brain as, otherwise, it can default to its own memory.
 
@@ -270,7 +320,7 @@ pytest
 ```
 
 They cover ordering and paging, filters, dedup, hybrid search, metadata failures, edit/delete,
-export/import, and health.
+export/import, pinning and session context, and health.
 
 The MCP server has its own tests (`mcp-server/`, same commands, needs Python 3.10+). They call the
 tools with the HTTP layer faked and check the requests sent to the Brain API and the text returned

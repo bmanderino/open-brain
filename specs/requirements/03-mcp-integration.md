@@ -22,26 +22,35 @@
 - MCP-014: Search is hybrid; results found through exact-term matching are labeled `exact-term match` in the output, and the docstring says names, identifiers and error strings are matched.
 - MCP-013: Exposes `project`, `type`, `tag`, and `source` filters (`source` maps to the API's `source_filter`). The docstring tells the model that `project` also returns unscoped entries.
 
-### `add_to_brain(content, tags=None, project=None, force=False) -> str`
+### `add_to_brain(content, tags=None, project=None, pinned=False, force=False) -> str`
 - MCP-020: Calls `POST /ingest` with `source="mcp"` (60 s timeout to allow for LLM extraction).
 - MCP-021: Returns a confirmation containing the new id, the stored content, tags, project (when set), and extracted type/topics/people/action items when present.
 - MCP-025: When the API reports `metadata_status: "failed"`, the tool MUST append a note that extraction failed and the metadata fields are empty.
 - MCP-024: When the API reports `duplicate_of`, the tool MUST say nothing was stored, show the existing entry's id, similarity and content, and mention `force=True`. The docstring explains this to the model.
 - MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
+- MCP-026: `pinned` is sent only when true. The docstring tells the model to pin only short, lasting facts every future session should see, and to keep pins few. A confirmation says `Pinned: yes`. When a duplicate was skipped and the caller asked to pin, the message suggests `update_brain_entry(pinned=True)` on the existing entry.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.
 
-### `update_brain_entry(entry_id, content=None, tags=None, project=None, reextract=False, type=None, topics=None, people=None, action_items=None) -> str`
+### `update_brain_entry(entry_id, content=None, tags=None, project=None, pinned=None, reextract=False, type=None, topics=None, people=None, action_items=None) -> str`
 - MCP-060: Calls `PATCH /entries/{id}` (90 s timeout, since changed content re-runs the LLM).
 - MCP-061: Returns the updated entry's content, project, tags, and metadata; `"No entry with id <id>"` on 404; a note when metadata extraction failed.
 - MCP-062: `search_brain` and `list_brain` output includes each entry's id in brackets so it can be passed here.
 - MCP-063: The docstring states that only passed fields change, that `tags` replaces all tags, and that `project=""` removes the project, and that `type`, `topics`, `people`, and `action_items` correct the extracted metadata by hand (lists replace, `[]` clears; edited entries become `metadata_status: "manual"`).
+- MCP-065: `pinned` is sent only when given, so `False` unpins and `None` leaves the pin alone. The output includes `Pinned: yes` for pinned entries.
 - MCP-064: Metadata arguments that are `None` are not sent; an empty list is sent so it can clear a field. Validation errors from the API (e.g. an invalid `type`) are returned as `Error updating entry: ...`.
 
-### `list_brain(limit=10, project=None, type=None, tag=None) -> str`
+### `list_brain(limit=10, project=None, type=None, tag=None, pinned=False) -> str`
 - MCP-030: Calls `GET /entries` with `limit` and any filters.
 - MCP-031: Returns `"Your brain is empty. Add something with add_to_brain!"` when empty.
 - MCP-032: Output shows date, source, project (when set), tags, content, type, topics, people (action items are omitted, unlike search).
 - MCP-033: Returns the true newest entries (LIST-006 fixed).
+- MCP-034: `pinned=True` lists only pinned entries. Pinned entries are marked `| pinned` in `list_brain` and `search_brain` output.
+
+### `get_context(project=None, recent=5) -> str`
+- MCP-070: Calls `GET /context?format=text` (30 s timeout) and returns the API's text unchanged (CTX-004).
+- MCP-071: `project` is sent only when given. Without it the API returns only unscoped entries.
+- MCP-072: The docstring tells the model to call this at the start of a session or task with the current repo name as `project`, that it is compact on purpose, and to use `search_brain` to dig deeper.
+- MCP-073: A non-200 reply is returned as `"Error fetching context: <body>"`.
 
 ### `brain_stats() -> str`
 - MCP-040: Calls `GET /stats`.

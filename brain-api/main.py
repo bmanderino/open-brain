@@ -10,7 +10,7 @@ from typing import Literal, Optional
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -50,6 +50,8 @@ CORS_ORIGINS = [
 # Seconds to wait for the LLM; a cold model load can take well over 20s
 METADATA_TIMEOUT = float(os.getenv("METADATA_TIMEOUT", 60))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", 0.92))  # cosine score; >1 disables
+CONTEXT_MAX_PINNED = 20  # cap on pinned entries in GET /context, so injected context stays small
+CONTEXT_MAX_CHARS = 400  # per-entry cap in GET /context?format=text
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
@@ -103,6 +105,11 @@ async def startup():
             field_name=field,
             field_schema=PayloadSchemaType.KEYWORD,
         )
+    qdrant.create_payload_index(
+        collection_name=COLLECTION,
+        field_name="pinned",
+        field_schema=PayloadSchemaType.BOOL,
+    )
 
 
 # Models
@@ -152,6 +159,7 @@ class IngestRequest(BaseModel):
     source: Optional[str] = "manual"
     tags: Optional[list[str]] = []
     project: Optional[str] = None
+    pinned: bool = False  # always shown by GET /context
     force: bool = False  # skip the near-duplicate check
 
 
@@ -163,6 +171,7 @@ class UpdateRequest(BaseModel):
     tags: Optional[list[str]] = None
     project: Optional[str] = None
     reextract: bool = False  # re-run metadata extraction without changing content
+    pinned: Optional[bool] = None
     type: Optional[str] = None
     topics: Optional[list[str]] = None
     people: Optional[list[str]] = None
@@ -182,6 +191,7 @@ class IngestResponse(BaseModel):
     source: str
     tags: list[str]
     project: Optional[str] = None
+    pinned: bool = False
     created_at: str
     metadata: Metadata
     metadata_status: Optional[str] = None  # "ok" or "failed"; None on entries stored before this field existed
@@ -208,6 +218,7 @@ class SearchResult(BaseModel):
     source: str
     tags: list[str]
     project: Optional[str] = None
+    pinned: bool = False
     created_at: str
     score: float  # cosine similarity to the query
     match: str = "semantic"  # semantic | keyword | both
@@ -296,6 +307,7 @@ def entry_dict(entry_id, payload: dict) -> dict:
         "source": payload.get("source", "unknown"),
         "tags": payload.get("tags", []),
         "project": payload.get("project"),
+        "pinned": payload.get("pinned", False),
         "created_at": payload.get("created_at", ""),
         "type": payload.get("type", "other"),
         "topics": payload.get("topics", []),
@@ -340,10 +352,17 @@ def build_filter(
     source: Optional[str] = None,
     created_after: Optional[str] = None,
     created_before: Optional[str] = None,
+    pinned: Optional[bool] = None,
+    unscoped_only: bool = False,
 ) -> Optional[Filter]:
     """AND together whichever filters were given. A project filter also matches
-    entries with no project (unscoped) unless include_unscoped is false."""
+    entries with no project (unscoped) unless include_unscoped is false. With no project,
+    unscoped_only restricts to entries that have none (otherwise every project matches)."""
     must = []
+    if pinned:  # pinned=False is not a filter: unpinned entries simply have no pinned key
+        must.append(FieldCondition(key="pinned", match=MatchValue(value=True)))
+    if not project and unscoped_only:
+        must.append(IsEmptyCondition(is_empty=PayloadField(key="project")))
     if project:
         match = FieldCondition(key="project", match=MatchValue(value=project))
         if include_unscoped:
@@ -543,6 +562,7 @@ async def ingest(req: IngestRequest):
                 source=hit.payload.get("source", "unknown"),
                 tags=hit.payload.get("tags", []),
                 project=hit.payload.get("project"),
+                pinned=hit.payload.get("pinned", False),
                 created_at=hit.payload.get("created_at", ""),
                 metadata=Metadata(
                     type=hit.payload.get("type", "other"),
@@ -569,6 +589,7 @@ async def ingest(req: IngestRequest):
                     "source": req.source,
                     "tags": tags,
                     **({"project": project} if project else {}),
+                    **({"pinned": True} if req.pinned else {}),
                     "created_at": created_at,
                     "type": metadata.type,
                     "topics": metadata.topics,
@@ -586,6 +607,7 @@ async def ingest(req: IngestRequest):
         source=req.source,
         tags=tags,
         project=project,
+        pinned=req.pinned,
         created_at=created_at,
         metadata=metadata,
         metadata_status=metadata_status,
@@ -631,6 +653,7 @@ async def search(req: SearchRequest):
             source=hit.payload.get("source", "unknown"),
             tags=hit.payload.get("tags", []),
             project=hit.payload.get("project"),
+            pinned=hit.payload.get("pinned", False),
             created_at=hit.payload.get("created_at", ""),
             score=score,
             match=match,
@@ -657,6 +680,7 @@ async def list_entries(
     type: Optional[str] = None,
     tag: Optional[str] = None,
     source: Optional[str] = None,
+    pinned: Optional[bool] = None,
 ):
     """Newest-first. Page by passing the previous response's next_before as before."""
     query_filter = build_filter(
@@ -667,6 +691,7 @@ async def list_entries(
         source=source,
         created_after=after,
         created_before=before,
+        pinned=pinned,
     )
     results, _ = qdrant.scroll(
         collection_name=COLLECTION,
@@ -681,9 +706,92 @@ async def list_entries(
     return {"entries": entries, "count": len(entries), "next_before": next_before}
 
 
+def scroll_newest(query_filter: Optional[Filter], limit: int) -> list:
+    results, _ = qdrant.scroll(
+        collection_name=COLLECTION,
+        scroll_filter=query_filter,
+        limit=limit,
+        order_by=OrderBy(key="created_at", direction=Direction.DESC),
+        with_payload=True,
+        with_vectors=False,
+    )
+    return results
+
+
+def format_context(project: Optional[str], pinned: list[dict], recent: list[dict], more_pinned: int) -> str:
+    """Compact plain text for injecting into a session (see the SessionStart hook in the README)."""
+
+    def line(e: dict) -> str:
+        text = " ".join(e["content"].split())
+        if len(text) > CONTEXT_MAX_CHARS:
+            text = text[: CONTEXT_MAX_CHARS - 1].rstrip() + "…"
+        scope = f"project: {e['project']}" if e["project"] else "general"
+        return f"- ({e['created_at'][:10]}, {scope}) {text}"
+
+    title = f'Open Brain context for project "{project}"' if project else "Open Brain context"
+    parts = [title + ":"]
+    if pinned:
+        parts += ["", "Pinned:"] + [line(e) for e in pinned]
+        if more_pinned:
+            parts.append(f"({more_pinned} more pinned not shown; use list_brain.)")
+    if recent:
+        parts += ["", "Recent:"] + [line(e) for e in recent]
+    if not pinned and not recent:
+        parts += ["", "Nothing stored yet."]
+    save = "add_to_brain" + (f' with project="{project}"' if project else "")
+    parts += [
+        "",
+        f"Save decisions and lasting preferences worth keeping with {save}; "
+        "use search_brain for anything older.",
+    ]
+    return "\n".join(parts)
+
+
+@app.get("/context")
+async def get_context(
+    project: Optional[str] = None,
+    recent: int = Query(5, ge=0, le=50),
+    max_pinned: int = Query(CONTEXT_MAX_PINNED, ge=0, le=100),
+    output_format: Literal["json", "text"] = Query("json", alias="format"),
+):
+    """What a session should know up front: pinned entries first (newest first, capped at
+    max_pinned), then the newest unpinned ones. With a project it returns that project's entries
+    plus unscoped ones; without one, only unscoped entries (pinned unscoped entries are global).
+    format=text returns compact plain text, ready to inject."""
+    project = project.strip() if project and project.strip() else None
+    scope = {"project": project, "unscoped_only": True}
+
+    pinned_filter = build_filter(**scope, pinned=True)
+    pinned_hits = scroll_newest(pinned_filter, max_pinned + 1)
+    truncated = len(pinned_hits) > max_pinned
+    pinned = [entry_dict(r.id, r.payload) for r in pinned_hits[:max_pinned]]
+    pinned_total = len(pinned)
+    if truncated:
+        pinned_total = qdrant.count(
+            collection_name=COLLECTION, count_filter=pinned_filter, exact=True
+        ).count
+
+    recent_entries: list[dict] = []
+    if recent:
+        taken = {str(r.id) for r in pinned_hits}
+        hits = scroll_newest(build_filter(**scope), recent + len(pinned_hits))
+        recent_entries = [entry_dict(r.id, r.payload) for r in hits if str(r.id) not in taken][:recent]
+
+    if output_format == "text":
+        return PlainTextResponse(
+            format_context(project, pinned, recent_entries, pinned_total - len(pinned))
+        )
+    return {
+        "project": project,
+        "pinned": pinned,
+        "pinned_total": pinned_total,
+        "recent": recent_entries,
+    }
+
+
 @app.patch("/entries/{entry_id}")
 async def update_entry(entry_id: str, req: UpdateRequest):
-    """Edit content, tags, project, or the extracted metadata by hand. Changing content
+    """Edit content, tags, project, pinned, or the extracted metadata by hand. Changing content
     re-embeds and re-extracts metadata; reextract=true re-runs extraction alone (e.g. for
     metadata_status failed). Hand-edited metadata fields override extraction and set
     metadata_status to "manual"."""
@@ -699,6 +807,11 @@ async def update_entry(entry_id: str, req: UpdateRequest):
             payload["project"] = project
         elif "project" in point.payload:
             clear.append("project")
+    if "pinned" in req.model_fields_set and req.pinned is not None:
+        if req.pinned:
+            payload["pinned"] = True
+        elif "pinned" in point.payload:
+            clear.append("pinned")  # unpinned entries carry no key, like unscoped ones
 
     content = point.payload["content"]
     content_changed = req.content is not None and req.content != content
@@ -767,6 +880,7 @@ def export_line(point) -> str:
             "source": p.get("source", "unknown"),
             "tags": p.get("tags", []),
             "project": p.get("project"),
+            "pinned": p.get("pinned", False),
             "created_at": p.get("created_at", ""),
             "metadata": {
                 "type": p.get("type", "other"),
@@ -819,6 +933,7 @@ class ImportLine(BaseModel):
     source: Optional[str] = "import"
     tags: Optional[list[str]] = None
     project: Optional[str] = None
+    pinned: bool = False
     created_at: Optional[str] = None
     metadata: Optional[dict] = None
     metadata_status: Optional[str] = None
@@ -875,6 +990,7 @@ async def import_entries(request: Request, overwrite: bool = False):
                         "source": line.source or "import",
                         "tags": line.tags or [],
                         **({"project": project} if project else {}),
+                        **({"pinned": True} if line.pinned else {}),
                         "created_at": line.created_at or datetime.now(timezone.utc).isoformat(),
                         "type": metadata.type,
                         "topics": metadata.topics,

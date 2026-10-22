@@ -53,7 +53,8 @@ async def search_brain(
             date = r.get("created_at", "")[:10] if r.get("created_at") else "unknown"
             proj = f" | project: {r['project']}" if r.get("project") else ""
             kw = " | exact-term match" if r.get("match") in ("keyword", "both") else ""
-            lines.append(f"{i}. [{r['id']}] (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{tags})")
+            pin = " | pinned" if r.get("pinned") else ""
+            lines.append(f"{i}. [{r['id']}] (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{pin}{tags})")
             lines.append(f"   {r['content']}")
 
             meta = r.get("metadata", {})
@@ -75,6 +76,7 @@ async def add_to_brain(
     content: str,
     tags: list[str] | None = None,
     project: str | None = None,
+    pinned: bool = False,
     force: bool = False,
 ) -> str:
     """Store a thought, decision, note, or piece of information into the Open Brain knowledge base.
@@ -84,6 +86,11 @@ async def add_to_brain(
     doesn't surface in other projects' searches. Omit it for general preferences or knowledge
     that applies everywhere.
 
+    Set pinned=True for a short, lasting fact that every future session in this project
+    should see without searching, such as "use pnpm, not npm" or "this repo targets Windows".
+    Pinned entries are shown first by get_context. Keep pins few and brief; most entries
+    should not be pinned.
+
     Near-duplicates of an existing entry (same project) are not stored again; the tool says so
     and returns the existing entry. Set force=True only if the new entry is genuinely different.
     """
@@ -91,21 +98,29 @@ async def add_to_brain(
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             f"{BRAIN_API_URL}/ingest",
-            json={"content": content, "tags": tags, "source": "mcp", "project": project, "force": force},
+            json={
+                "content": content, "tags": tags, "source": "mcp", "project": project,
+                "force": force, **({"pinned": True} if pinned else {}),
+            },
         )
         if resp.status_code != 200:
             return f"Error storing in brain: {resp.text}"
 
         data = resp.json()
         if data.get("duplicate_of"):
+            hint = "" if data.get("pinned") or not pinned else (
+                " To pin the existing entry instead, call update_brain_entry with pinned=True."
+            )
             return (
                 f"Not stored: a near-duplicate already exists (id: {data['duplicate_of']}, "
                 f"similarity {data['duplicate_score']:.3f}).\n\n\"{data['content']}\"\n\n"
-                "Use force=True if this is genuinely a different entry."
+                f"Use force=True if this is genuinely a different entry.{hint}"
             )
         tag_str = f"\nTags: {', '.join(tags)}" if tags else ""
         if data.get("project"):
             tag_str += f"\nProject: {data['project']}"
+        if data.get("pinned"):
+            tag_str += "\nPinned: yes"
 
         meta = data.get("metadata", {})
         meta_parts = []
@@ -133,6 +148,7 @@ async def update_brain_entry(
     content: str | None = None,
     tags: list[str] | None = None,
     project: str | None = None,
+    pinned: bool | None = None,
     reextract: bool = False,
     type: str | None = None,
     topics: list[str] | None = None,
@@ -142,7 +158,8 @@ async def update_brain_entry(
     """Edit an existing Open Brain entry. Get entry_id from search_brain or list_brain.
     Only the fields you pass are changed. Changing content re-embeds the entry and regenerates
     its type/topics/people/action items. tags replaces all tags. project="" removes the
-    project. reextract=True re-runs metadata extraction without changing content (use it on
+    project. pinned=True pins the entry (get_context always shows it) and pinned=False unpins
+    it. reextract=True re-runs metadata extraction without changing content (use it on
     entries whose metadata extraction failed).
 
     The extracted metadata can be corrected by hand: type (decision, idea, meeting,
@@ -158,6 +175,8 @@ async def update_brain_entry(
         body["tags"] = tags
     if project is not None:
         body["project"] = project
+    if pinned is not None:
+        body["pinned"] = pinned
     for key, value in (
         ("type", type), ("topics", topics), ("people", people), ("action_items", action_items),
     ):
@@ -173,6 +192,8 @@ async def update_brain_entry(
         parts = [f"Updated entry {e['id']}", f"\"{e['content']}\""]
         if e.get("project"):
             parts.append(f"Project: {e['project']}")
+        if e.get("pinned"):
+            parts.append("Pinned: yes")
         if e.get("tags"):
             parts.append(f"Tags: {', '.join(e['tags'])}")
         if e.get("type") and e["type"] != "other":
@@ -189,18 +210,39 @@ async def update_brain_entry(
 
 
 @mcp.tool()
+async def get_context(project: str | None = None, recent: int = 5) -> str:
+    """Get the context worth knowing at the start of work: pinned entries first, then the most
+    recent entries, for one project plus anything not tied to a project. Call this at the start
+    of a session or task, passing the current repo/project name as project. It is compact on
+    purpose; use search_brain to dig for anything specific. Without project, returns only
+    entries not tied to a project.
+    """
+    params: dict = {"recent": recent, "format": "text"}
+    if project:
+        params["project"] = project
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{BRAIN_API_URL}/context", params=params)
+        if resp.status_code != 200:
+            return f"Error fetching context: {resp.text}"
+        return resp.text
+
+
+@mcp.tool()
 async def list_brain(
     limit: int = 10,
     project: str | None = None,
     type: str | None = None,
     tag: str | None = None,
+    pinned: bool = False,
 ) -> str:
     """List the most recent entries in the Open Brain knowledge base, newest first.
     Optional filters: project (also includes entries not tied to any project),
     type (decision, idea, meeting, action_item, reference, question, reflection, other),
-    tag (exact tag).
+    tag (exact tag), pinned=True (only pinned entries).
     """
-    params = {"limit": limit}
+    params: dict = {"limit": limit}
+    if pinned:
+        params["pinned"] = "true"
     if project:
         params["project"] = project
     if type:
@@ -223,7 +265,8 @@ async def list_brain(
             tags = f" [{', '.join(e['tags'])}]" if e.get("tags") else ""
             date = e.get("created_at", "")[:10] if e.get("created_at") else "unknown"
             proj = f" | project: {e['project']}" if e.get("project") else ""
-            lines.append(f"{i}. [{e['id']}] ({date} | {e['source']}{proj}{tags})")
+            pin = " | pinned" if e.get("pinned") else ""
+            lines.append(f"{i}. [{e['id']}] ({date} | {e['source']}{proj}{pin}{tags})")
             lines.append(f"   {e['content']}")
 
             meta_type = e.get("type", "other")
