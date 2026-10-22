@@ -52,6 +52,7 @@
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| HLTH-001 | MUST return `{status:"ok", collection, embed_model}` with HTTP 200 when the API process is running. | ✅ |
-| HLTH-002 | Health currently does NOT verify Qdrant or Ollama connectivity. It SHOULD report dependency status. | ⚠️ |
+| HLTH-001 | MUST return HTTP 200 whenever the API process is running, with `{status, collection, embed_model, qdrant, ollama}`. | ✅ |
+| HLTH-002 | Health MUST probe dependencies: `qdrant{ok, collection_exists}` (lists collections) and `ollama{ok, embed_model_present, llm_model_present}` (`GET /api/tags` with a 3 s timeout; a bare model name matches `:latest`). Failures are reported with `error`, never raised. | ✅ |
+| HLTH-004 | `status` MUST be `ok` only when Qdrant is reachable with the collection present and Ollama is reachable with both models installed; otherwise `degraded`. A degraded status still returns HTTP 200 so the web UI's online indicator keeps meaning "the API is up". | ✅ |
 | HLTH-003 | The web UI uses this endpoint for its online/offline indicator. | ✅ |

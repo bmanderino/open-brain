@@ -16,14 +16,14 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | GAP-008 | P2 | ~~README setup omits pulling `llama3.2`; without it metadata extraction silently falls back to `other`.~~ **Resolved:** README now documents pulling `llama3.2` and the fallback behavior. | README step 3 | Add pull step; surface extraction failure (flag in response). |
 | GAP-009 | P2 | `DELETE` returns 200 for missing ids and 500 for malformed ids; UI deletes without confirmation or error handling. **API half resolved:** DELETE now returns 404 for missing and 422 for malformed ids; the UI still deletes without confirmation or error handling. | `delete_entry`, `deleteEntry` | Validate id, return 404, add confirm + error toast. |
 | GAP-010 | P2 | Web UI and API swallow errors (all ingest errors say "could not reach Brain API"; search errors appear as "no results"). | `App.jsx` | Distinguish network/HTTP/empty states. |
-| GAP-011 | P2 | `/health` does not check Qdrant or Ollama. | `main.py` | Add dependency probes. |
+| GAP-011 | P2 | ~~`/health` does not check Qdrant or Ollama.~~ **Resolved:** health probes both and reports `ok`/`degraded`. | `main.py` | Done. |
 | GAP-012 | P2 | `limit` unvalidated on `/search` (`/entries` is now validated, 1–100). | `main.py` | Pydantic `Field(ge=1, le=100)`. |
 | GAP-013 | P3 | Deprecated APIs: `@app.on_event("startup")` (FastAPI lifespan), `qdrant.search` (use `query_points`). **Partly resolved:** `qdrant.search` replaced by `query_points`; `on_event` remains. | `main.py` | Migrate `on_event` to lifespan. |
 | GAP-014 | P3 | ~~Mutable default args (`tags: list[str] = []`) in MCP tool signatures.~~ **Resolved** | `mcp-server.py` | Done. |
 | GAP-015 | P3 | ~~`ingest` returns `req.tags` that may be `None` if client sends `null`; typed `list[str]`.~~ **Resolved** | `main.py` | Done. |
 | GAP-016 | P3 | Inconsistent response shapes (`metadata` nested vs flat). | See DATA-010 | Unify under `metadata`. |
 | GAP-017 | P3 | Non-standard fixed fonts referenced but may not be loaded; no responsive layout. | `App.jsx` CSS | Verify `index.html` font links; add breakpoints. |
-| GAP-018 | P3 | No tests, CI, or lint. | repo | Add pytest for API (mock Ollama/Qdrant) and a smoke test script. |
+| GAP-018 | P3 | ~~No tests, CI, or lint.~~ **Partly resolved:** pytest suite for the API (73 tests, in-memory Qdrant, faked Ollama). CI, lint, and MCP-server/web-UI tests remain. | repo | Add CI and lint; test the MCP wrappers. |
 
 ## Candidate Features (not committed)
 

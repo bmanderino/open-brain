@@ -99,7 +99,9 @@ Verify the Brain API is healthy:
 curl http://localhost:8000/health
 ```
 
-Note: `/health` only confirms the API process is up; it doesn't check Ollama or Qdrant.
+`/health` always returns HTTP 200 while the API is running, and reports whether its
+dependencies are usable: `status` is `ok` or `degraded`, with `qdrant` and `ollama` details
+(Ollama reachable, and the embedding and metadata models installed).
 
 ### 4. Connect Claude Code
 
@@ -242,6 +244,22 @@ curl "http://localhost:8000/entries?limit=10&project=open-brain"
 ```
 
 `POST /ingest` also accepts an optional `"project"` field.
+
+---
+
+## Running the tests
+
+The API tests run against an in-memory Qdrant with Ollama faked, so they need no running stack:
+
+```bash
+cd brain-api
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+They cover ordering and paging, filters, dedup, hybrid search, metadata failures, edit/delete,
+export/import, and health. The MCP server and web UI have no tests yet.
 
 ---
 

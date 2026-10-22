@@ -74,7 +74,7 @@ Implemented without upgrading anything: a full-text index on `content`, BM25 com
 
 - `delete_entry` should validate the id and return 404 for missing entries instead of 200 (GAP-009).
 - ~~Validate `limit` on `/search` and `/entries`~~ done (GAP-012), as were GAP-014 and GAP-015.
-- `/health` should probe Qdrant and Ollama (GAP-011).
+- ~~`/health` should probe Qdrant and Ollama~~ done (GAP-011).
 - `/stats` scrolls the entire collection on every call. Fine at this size, but cache it or compute incrementally if the brain grows into the thousands.
 
 ## Not in scope right now
@@ -83,4 +83,6 @@ Auth (FEAT-007) matters only if this is ever exposed beyond localhost. All ports
 
 ## Suggested process
 
-Start with #1, since it's small and fixes something already broken. Add pytest coverage for the API with Ollama and Qdrant mocked as you go (GAP-018), starting with whatever you touch. There are no tests today, so each change is currently unverified except by hand.
+**Status:** every priority item above is done, and the API has a pytest suite (`brain-api/tests`, see the README). Remaining: CI, linting, tests for the MCP server and web UI, and the leftovers noted in each item.
+
+_Original advice:_ start with #1, since it's small and fixes something already broken. Add pytest coverage for the API with Ollama and Qdrant mocked as you go (GAP-018), starting with whatever you touch. There are no tests today, so each change is currently unverified except by hand.

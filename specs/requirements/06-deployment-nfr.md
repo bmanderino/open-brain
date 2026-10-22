@@ -77,7 +77,7 @@
 ### Quality
 | ID | Requirement | Status |
 |----|-------------|--------|
-| NFR-040 | There are no automated tests, linting, or CI. | ❌ |
+| NFR-040 | API tests (pytest, `brain-api/tests`) run against an in-memory Qdrant with Ollama's embedding and metadata calls faked; they cover the API's behavior end to end and run in under a second. There is still no linting, CI, or MCP-server/web-UI test coverage. | ⚠️ |
 | NFR-041 | Dependencies are version-pinned (API) or lower-bounded (`mcp[cli]>=1.8.0,<2`; v2 renamed FastMCP and breaks the server). | ✅ / ⚠️ |
 
 ### Compatibility

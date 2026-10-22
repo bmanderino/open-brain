@@ -434,9 +434,49 @@ def fuse(vector_hits: list, keyword_hits: list, embedding: list[float], limit: i
 
 # Routes
 
+def model_installed(wanted: str, installed: list[str]) -> bool:
+    """Ollama lists models with a tag (llama3.2:latest); a bare name means :latest."""
+    return any(name == wanted or name == f"{wanted}:latest" for name in installed)
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "collection": COLLECTION, "embed_model": EMBED_MODEL}
+    """Always HTTP 200 while the API process is up; status says whether dependencies are
+    usable ("ok" or "degraded"), and qdrant/ollama give the detail."""
+    qdrant_status: dict = {"ok": True}
+    try:
+        names = await asyncio.to_thread(
+            lambda: [c.name for c in qdrant.get_collections().collections]
+        )
+        qdrant_status["collection_exists"] = COLLECTION in names
+    except Exception as e:
+        qdrant_status = {"ok": False, "error": str(e)[:200]}
+
+    ollama_status: dict = {"ok": True}
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+        resp.raise_for_status()
+        installed = [m.get("name", "") for m in resp.json().get("models", [])]
+        ollama_status["embed_model_present"] = model_installed(EMBED_MODEL, installed)
+        ollama_status["llm_model_present"] = model_installed(LLM_MODEL, installed)
+    except Exception as e:
+        ollama_status = {"ok": False, "error": str(e)[:200]}
+
+    healthy = (
+        qdrant_status["ok"]
+        and qdrant_status.get("collection_exists", False)
+        and ollama_status["ok"]
+        and ollama_status["embed_model_present"]
+        and ollama_status["llm_model_present"]
+    )
+    return {
+        "status": "ok" if healthy else "degraded",
+        "collection": COLLECTION,
+        "embed_model": EMBED_MODEL,
+        "qdrant": qdrant_status,
+        "ollama": ollama_status,
+    }
 
 
 @app.post("/ingest", response_model=IngestResponse)
