@@ -39,6 +39,8 @@ CORS_ORIGINS = [
     for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     if o.strip()
 ]
+# Seconds to wait for the LLM; a cold model load can take well over 20s
+METADATA_TIMEOUT = float(os.getenv("METADATA_TIMEOUT", 60))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", 0.92))  # cosine score; >1 disables
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
@@ -93,6 +95,17 @@ class Metadata(BaseModel):
     people: list[str] = []
     action_items: list[str] = []
 
+    @field_validator("topics", "people", "action_items", mode="before")
+    @classmethod
+    def clean_list(cls, v):
+        """Small models return a bare string, or placeholders like "none" instead of []."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = [v]
+        placeholders = {"", "none", "n/a", "na", "null", "nil", "unknown"}
+        return [x.strip() for x in v if isinstance(x, str) and x.strip().lower() not in placeholders]
+
     @field_validator("type")
     @classmethod
     def coerce_type(cls, v: str) -> str:
@@ -116,6 +129,7 @@ class IngestResponse(BaseModel):
     project: Optional[str] = None
     created_at: str
     metadata: Metadata
+    metadata_status: Optional[str] = None  # "ok" or "failed"; None on entries stored before this field existed
     duplicate_of: Optional[str] = None  # set when an existing near-duplicate was returned instead
     duplicate_score: Optional[float] = None
 
@@ -184,11 +198,12 @@ Text:
 """
 
 
-async def extract_metadata(content: str) -> Metadata:
+async def extract_metadata(content: str) -> tuple[Metadata, str]:
     """Call Ollama /api/generate with JSON format to extract structured metadata.
-    Falls back to empty Metadata on any failure — never raises."""
+    Returns (metadata, status) where status is "ok" or "failed". On failure the
+    metadata is empty; never raises."""
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=METADATA_TIMEOUT) as client:
             resp = await client.post(
                 f"{OLLAMA_URL}/api/generate",
                 json={
@@ -200,19 +215,20 @@ async def extract_metadata(content: str) -> Metadata:
             )
             if resp.status_code != 200:
                 print(f"[metadata] Ollama generate failed: {resp.status_code}")
-                return Metadata()
+                return Metadata(), "failed"
             data = resp.json()
             raw = data.get("response", "{}")
             parsed = json.loads(raw)
-            return Metadata(
+            metadata = Metadata(
                 type=parsed.get("type", "other"),
                 topics=parsed.get("topics", []),
                 people=parsed.get("people", []),
                 action_items=parsed.get("action_items", []),
             )
+            return metadata, "ok"
     except Exception as e:
-        print(f"[metadata] extraction failed (graceful fallback): {e}")
-        return Metadata()
+        print(f"[metadata] extraction failed ({type(e).__name__}): {e}")
+        return Metadata(), "failed"
 
 
 def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
@@ -275,7 +291,7 @@ async def ingest(req: IngestRequest):
     tags = req.tags or []
     project = req.project.strip() if req.project and req.project.strip() else None
 
-    embedding, metadata = await asyncio.gather(
+    embedding, (metadata, metadata_status) = await asyncio.gather(
         get_embedding(req.content),
         extract_metadata(req.content),
     )
@@ -308,6 +324,7 @@ async def ingest(req: IngestRequest):
                     people=hit.payload.get("people", []),
                     action_items=hit.payload.get("action_items", []),
                 ),
+                metadata_status=hit.payload.get("metadata_status"),
                 duplicate_of=str(hit.id),
                 duplicate_score=hit.score,
             )
@@ -331,6 +348,7 @@ async def ingest(req: IngestRequest):
                     "topics": metadata.topics,
                     "people": metadata.people,
                     "action_items": metadata.action_items,
+                    "metadata_status": metadata_status,
                 },
             )
         ],
@@ -344,6 +362,7 @@ async def ingest(req: IngestRequest):
         project=project,
         created_at=created_at,
         metadata=metadata,
+        metadata_status=metadata_status,
     )
 
 
@@ -435,6 +454,7 @@ async def list_entries(
             "topics": r.payload.get("topics", []),
             "people": r.payload.get("people", []),
             "action_items": r.payload.get("action_items", []),
+            "metadata_status": r.payload.get("metadata_status"),
         }
         for r in results
     ]

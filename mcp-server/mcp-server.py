@@ -114,6 +114,11 @@ async def add_to_brain(
             meta_parts.append(f"People: {', '.join(meta['people'])}")
         if meta.get("action_items"):
             meta_parts.append(f"Action items: {'; '.join(meta['action_items'])}")
+        if data.get("metadata_status") == "failed":
+            meta_parts.append(
+                "Note: metadata extraction failed (is the Ollama LLM loaded?), "
+                "so type/topics/people/action items are empty."
+            )
         meta_str = ("\n" + "\n".join(meta_parts)) if meta_parts else ""
 
         return f"Stored in brain (id: {data['id']})\n\n\"{content}\"{tag_str}{meta_str}"

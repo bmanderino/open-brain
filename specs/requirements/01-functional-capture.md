@@ -26,8 +26,9 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | META-001 | On ingest, the API MUST call Ollama `/api/generate` with `format: "json"`, `stream: false`, model `OLLAMA_LLM_MODEL` (default `llama3.2`), 20 s timeout. | ✅ |
 | META-002 | The extraction prompt MUST request: `type`, `topics[]`, `people[]`, `action_items[]`. | ✅ |
 | META-003 | Valid `type` values: `decision, idea, meeting, action_item, reference, question, reflection, other`. Any other value MUST be coerced to `other`. | ✅ |
-| META-004 | Extraction MUST NOT fail ingest. On any error (HTTP failure, timeout, invalid JSON) the API MUST log and fall back to `Metadata()` (`type=other`, empty lists). | ✅ |
-| META-005 | Extracted metadata MUST be persisted in the point payload as top-level keys `type, topics, people, action_items`. | ✅ |
+| META-004 | Extraction MUST NOT fail ingest. On any error (HTTP failure, timeout, invalid JSON) the API MUST log and fall back to `Metadata()` (`type=other`, empty lists) and record `metadata_status: "failed"`. The LLM call times out after `METADATA_TIMEOUT` seconds (default 60). | ✅ |
+| META-005 | Extracted metadata MUST be persisted in the point payload as top-level keys `type, topics, people, action_items`, plus `metadata_status` (`"ok"` or `"failed"`). The ingest response, `/entries`, and duplicate responses include `metadata_status` (`null` for entries stored before the field existed). | ✅ |
+| META-008 | List fields MUST be cleaned: a bare string becomes a one-item list, and placeholder values (`none`, `n/a`, `null`, `unknown`, empty) are dropped. | ✅ |
 | META-006 | User content is interpolated into the prompt via `str.format`; content containing literal `{`/`}` is safe because only the template is formatted, but prompt-injection by content is possible and MUST be treated as untrusted. | ⚠️ |
 | META-007 | Users SHOULD be able to override or edit extracted metadata. | ❌ |
 

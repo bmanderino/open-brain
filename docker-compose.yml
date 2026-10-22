@@ -58,6 +58,8 @@ services:
       - COLLECTION_NAME=brain
       # Cosine score at or above which a new entry counts as a duplicate (>1 disables)
       - DEDUP_THRESHOLD=0.92
+      # Seconds to wait for the LLM metadata call (cold model loads can be slow)
+      - METADATA_TIMEOUT=60
     depends_on:
       - qdrant
       - ollama

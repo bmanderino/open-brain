@@ -46,7 +46,9 @@ Implemented with `DEDUP_THRESHOLD` (default 0.92), scoped per project, a `force`
 
 **Done when:** Adding the same sentence twice stores one entry and tells the caller why.
 
-### 4. Surface metadata extraction failures
+### 4. ~~Surface metadata extraction failures~~ Done
+
+Implemented: `metadata_status` (`ok`/`failed`) stored and returned, `METADATA_TIMEOUT` (default 60s), an MCP note on failure, and cleanup of placeholder values like `none`. The re-extract path is still open and belongs to #6.
 
 **Why:** `extract_metadata` has a 20s timeout and catches every exception, falling back to `type: other` with empty lists. A cold `llama3.2` load on a fresh Ollama can easily take longer than that, so entries get stored with no metadata and nobody finds out. The only trace is a `[metadata]` line in container logs. This also quietly degrades the topic and people stats.
 

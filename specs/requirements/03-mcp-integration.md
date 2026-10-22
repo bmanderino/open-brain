@@ -24,6 +24,7 @@
 ### `add_to_brain(content, tags=None, project=None, force=False) -> str`
 - MCP-020: Calls `POST /ingest` with `source="mcp"` (60 s timeout to allow for LLM extraction).
 - MCP-021: Returns a confirmation containing the new id, the stored content, tags, project (when set), and extracted type/topics/people/action items when present.
+- MCP-025: When the API reports `metadata_status: "failed"`, the tool MUST append a note that extraction failed and the metadata fields are empty.
 - MCP-024: When the API reports `duplicate_of`, the tool MUST say nothing was stored, show the existing entry's id, similarity and content, and mention `force=True`. The docstring explains this to the model.
 - MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.

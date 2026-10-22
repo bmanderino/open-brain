@@ -73,7 +73,9 @@ Two models are used:
 
 - `nomic-embed-text` — embeddings (**required**).
 - `llama3.2` — extracts each entry's type, topics, people, and action items. If it's
-  missing, entries are still stored but get type `other` and no extracted metadata.
+  missing or too slow (the call times out after `METADATA_TIMEOUT` seconds, default 60, which
+  matters for a cold model load), entries are still stored but get type `other` and no extracted
+  metadata. Such entries are marked `metadata_status: failed`, and `add_to_brain` says so.
   To use a different model you already have, set `OLLAMA_LLM_MODEL` on `brain-api`.
 
 With host Ollama:

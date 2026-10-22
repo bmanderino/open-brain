@@ -93,6 +93,6 @@ Single-user, local tool, so metrics are qualitative/self-measured:
 ## 10. Risks and Open Questions
 
 - **Security:** No authentication. CORS is restricted to the web UI origin and ports bind to `127.0.0.1`, but the stack is still unsafe to expose beyond localhost without adding auth. See gaps doc.
-- **LLM metadata quality:** Small local model may mislabel; failure is silent (falls back to `other`/empty).
+- **LLM metadata quality:** Small local model may mislabel; failures fall back to `other`/empty but are flagged with `metadata_status: failed` and reported by `add_to_brain`.
 - **Embedding model lock-in:** Changing embed model changes dimension and requires re-embedding all data.
 - Open: Should authentication be added before any non-local use? Should entries be editable? Should search blend keyword and vector scoring?
