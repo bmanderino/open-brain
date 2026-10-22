@@ -55,7 +55,23 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | EXP-003 | Entries MUST be read in batches of 100 rather than loaded into memory at once. | ✅ |
 | EXP-004 | Export has no filters (project, date); it always covers the whole collection. | ❌ |
 
-## 5. Update
+## 5. Import
+
+**Endpoint:** `POST /import?overwrite=false` with a JSONL body in the `/export` format (sent as the raw request body, e.g. `curl --data-binary @file`).
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| IMP-001 | Each non-blank line MUST be a JSON object with at least non-empty `content`; `id, source, tags, project, created_at, metadata, metadata_status` are optional and unknown keys are ignored. | ✅ |
+| IMP-002 | Every imported entry MUST be re-embedded with the current embedding model. | ✅ |
+| IMP-003 | `id` and `created_at` MUST be preserved when valid (a missing `id` gets a new UUID, a missing `created_at` gets the import time). An `id` already in the collection is skipped (`skipped_existing`) unless `overwrite=true`, which replaces it. Re-importing a file is therefore safe. | ✅ |
+| IMP-004 | Metadata MUST be reused when the line has `metadata` and `metadata_status` is not `failed`; otherwise it is extracted (counted in `reextracted`). Reused metadata passes the same cleanup as extracted metadata (META-008). | ✅ |
+| IMP-005 | The near-duplicate check MUST NOT run, so a restore is faithful. | ✅ |
+| IMP-006 | A bad line (invalid JSON, empty content, malformed `id` or `created_at`, repeated `id` within the file, embedding error) MUST NOT abort the import. It is reported in `failed` as `{line, error}` and the rest is imported. | ✅ |
+| IMP-007 | The response MUST be `{imported, skipped_existing, reextracted, failed[]}`. | ✅ |
+| IMP-008 | The whole body is read into memory, and entries are embedded in batches of 20 with 4 concurrent Ollama calls. Very large imports are therefore slow and memory-bound. | ⚠️ |
+| IMP-009 | Import is API-only; the MCP server and web UI do not expose it. | ✅ (by design) |
+
+## 6. Update
 
 | ID | Requirement | Status |
 |----|-------------|--------|

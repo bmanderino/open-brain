@@ -226,6 +226,14 @@ model). This is the backup route that doesn't depend on Docker volumes:
 curl -o brain-backup.jsonl http://localhost:8000/export
 ```
 
+**Restore or move a brain** from an export file. Entries are re-embedded with your current
+model, ids and dates are kept, and ids that already exist are skipped (add `?overwrite=true` to
+replace them), so running it twice is safe. Entries without usable metadata are re-extracted;
+otherwise the saved metadata is reused. The response lists any bad lines:
+```bash
+curl -X POST http://localhost:8000/import --data-binary @brain-backup.jsonl
+```
+
 **List recent entries** (newest first, `limit` 1–100). Accepts `project`, `include_unscoped`,
 `type`, `tag`, `source`, `after`, and `before`. To page, pass the previous response's
 `next_before` as `before`; it is `null` on the last page:

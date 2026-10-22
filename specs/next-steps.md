@@ -62,9 +62,9 @@ Implemented without upgrading anything: a full-text index on `content`, BM25 com
 
 **Suggested approach:** Qdrant 1.11 doesn't give you BM25 for free. One option is a full-text payload index on `content` plus a text match query, then merging the two ranked lists with reciprocal rank fusion in the API. Check what 1.11.x supports before committing, and only upgrade `qdrant-client` and the server image if there's a clear benefit. This also means migrating off the deprecated `qdrant.search` call (GAP-013), which is a good time to do it.
 
-### 6. Edit, export, import (FEAT-001, FEAT-006)
+### 6. ~~Edit, export, import (FEAT-001, FEAT-006)~~ Done
 
-**Progress:** Stage 1 (edit) is done: `PATCH /entries/{id}` with content/tags/project/reextract, the `update_brain_entry` MCP tool, and 404/422 handling on delete (GAP-009 API half). Stage 2 (`GET /export`, streamed JSONL without vectors) is done. Stage 3 (`POST /import`, which re-embeds) remains.
+**Progress:** Stage 1 (edit) is done: `PATCH /entries/{id}` with content/tags/project/reextract, the `update_brain_entry` MCP tool, and 404/422 handling on delete (GAP-009 API half). Stage 2 (`GET /export`, streamed JSONL without vectors) is done. Stage 3 (`POST /import`) is done too: re-embeds, keeps ids and dates, skips existing ids unless `overwrite=true`, reuses good metadata, and skips the dedup check. Verified by wiping the brain and restoring: the re-export was byte-identical.
 
 **Why:** Data ownership is a stated goal (G5), but right now the only backup is a Docker volume snapshot, and a wrongly labeled entry can only be fixed by delete and re-add.
 

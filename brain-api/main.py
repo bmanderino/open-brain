@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
@@ -725,6 +725,114 @@ def export_entries():
         media_type="application/x-ndjson",
         headers={"Content-Disposition": f'attachment; filename="open-brain-{stamp}.jsonl"'},
     )
+
+
+IMPORT_BATCH = 20
+IMPORT_CONCURRENCY = 4
+
+
+class ImportLine(BaseModel):
+    """One line of an /export file. Unknown keys are ignored."""
+    id: Optional[str] = None
+    content: str
+    source: Optional[str] = "import"
+    tags: Optional[list[str]] = None
+    project: Optional[str] = None
+    created_at: Optional[str] = None
+    metadata: Optional[dict] = None
+    metadata_status: Optional[str] = None
+
+
+@app.post("/import")
+async def import_entries(request: Request, overwrite: bool = False):
+    """Restore entries from a JSONL body in the /export format (send with --data-binary).
+    Ids and created_at are kept, so re-importing a file is safe: existing ids are skipped
+    unless overwrite=true. Every entry is re-embedded. Metadata is reused when the line has
+    it and it did not fail; otherwise it is extracted. The near-duplicate check is skipped."""
+    text = (await request.body()).decode("utf-8", errors="replace")
+    result = {"imported": 0, "skipped_existing": 0, "reextracted": 0, "failed": []}
+
+    parsed: list[tuple[int, ImportLine, str]] = []
+    seen: set[str] = set()
+    for n, raw in enumerate(text.splitlines(), 1):
+        if not raw.strip():
+            continue
+        try:
+            line = ImportLine.model_validate(json.loads(raw))
+            if not line.content.strip():
+                raise ValueError("content is empty")
+            entry_id = line.id or str(uuid.uuid4())
+            uuid.UUID(entry_id)
+            if line.created_at:
+                datetime.fromisoformat(line.created_at)
+            if entry_id in seen:
+                raise ValueError(f"duplicate id {entry_id} in file")
+            seen.add(entry_id)
+            parsed.append((n, line, entry_id))
+        except Exception as e:
+            result["failed"].append({"line": n, "error": str(e)[:200]})
+
+    gate = asyncio.Semaphore(IMPORT_CONCURRENCY)
+
+    async def prepare(n: int, line: ImportLine, entry_id: str):
+        async with gate:
+            try:
+                reused = bool(line.metadata) and line.metadata_status != "failed"
+                if reused:
+                    embedding = await get_embedding(line.content)
+                    metadata, status = Metadata(**line.metadata), line.metadata_status
+                else:
+                    embedding, (metadata, status) = await asyncio.gather(
+                        get_embedding(line.content), extract_metadata(line.content)
+                    )
+                project = line.project.strip() if line.project and line.project.strip() else None
+                point = PointStruct(
+                    id=entry_id,
+                    vector=embedding,
+                    payload={
+                        "content": line.content,
+                        "source": line.source or "import",
+                        "tags": line.tags or [],
+                        **({"project": project} if project else {}),
+                        "created_at": line.created_at or datetime.now(timezone.utc).isoformat(),
+                        "type": metadata.type,
+                        "topics": metadata.topics,
+                        "people": metadata.people,
+                        "action_items": metadata.action_items,
+                        **({"metadata_status": status} if status else {}),
+                    },
+                )
+                return point, not reused
+            except Exception as e:
+                detail = e.detail if isinstance(e, HTTPException) else str(e)
+                result["failed"].append({"line": n, "error": str(detail)[:200]})
+                return None
+
+    for i in range(0, len(parsed), IMPORT_BATCH):
+        chunk = parsed[i : i + IMPORT_BATCH]
+        existing = {
+            str(r.id)
+            for r in qdrant.retrieve(
+                collection_name=COLLECTION,
+                ids=[eid for _, _, eid in chunk],
+                with_payload=False,
+                with_vectors=False,
+            )
+        }
+        todo = []
+        for item in chunk:
+            if item[2] in existing and not overwrite:
+                result["skipped_existing"] += 1
+            else:
+                todo.append(item)
+        prepared = [r for r in await asyncio.gather(*(prepare(*t) for t in todo)) if r]
+        if prepared:
+            qdrant.upsert(collection_name=COLLECTION, points=[pt for pt, _ in prepared])
+            result["imported"] += len(prepared)
+            result["reextracted"] += sum(1 for _, extracted in prepared if extracted)
+
+    result["failed"].sort(key=lambda f: f["line"])
+    return result
 
 
 @app.get("/stats")
