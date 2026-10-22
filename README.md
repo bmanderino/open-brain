@@ -220,6 +220,12 @@ curl -X PATCH http://localhost:8000/entries/<id> \
   -d '{"tags": ["decision"], "project": "open-brain"}'
 ```
 
+**Export everything** as JSONL (one entry per line, no vectors, so it works with any embedding
+model). This is the backup route that doesn't depend on Docker volumes:
+```bash
+curl -o brain-backup.jsonl http://localhost:8000/export
+```
+
 **List recent entries** (newest first, `limit` 1–100). Accepts `project`, `include_unscoped`,
 `type`, `tag`, `source`, `after`, and `before`. To page, pass the previous response's
 `next_before` as `before`; it is `null` on the last page:

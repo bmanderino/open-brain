@@ -10,6 +10,7 @@ from typing import Literal, Optional
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -674,6 +675,56 @@ async def delete_entry(entry_id: str):
         points_selector=[entry_id],
     )
     return {"deleted": entry_id}
+
+
+def export_line(point) -> str:
+    p = point.payload
+    return json.dumps(
+        {
+            "id": str(point.id),
+            "content": p["content"],
+            "source": p.get("source", "unknown"),
+            "tags": p.get("tags", []),
+            "project": p.get("project"),
+            "created_at": p.get("created_at", ""),
+            "metadata": {
+                "type": p.get("type", "other"),
+                "topics": p.get("topics", []),
+                "people": p.get("people", []),
+                "action_items": p.get("action_items", []),
+            },
+            "metadata_status": p.get("metadata_status"),
+        },
+        ensure_ascii=False,
+    )
+
+
+@app.get("/export")
+def export_entries():
+    """Stream every entry as JSONL (one JSON object per line), in no guaranteed order. Vectors are
+    not included: /import re-embeds, so an export works across embedding models."""
+
+    def lines():
+        offset = None
+        while True:
+            batch, offset = qdrant.scroll(
+                collection_name=COLLECTION,
+                limit=100,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in batch:
+                yield export_line(point) + "\n"
+            if offset is None:
+                break
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return StreamingResponse(
+        lines(),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="open-brain-{stamp}.jsonl"'},
+    )
 
 
 @app.get("/stats")

@@ -44,7 +44,18 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | DEL-004 | A malformed (non-UUID) id MUST return 422. | ✅ |
 | DEL-005 | The MCP server does not expose delete. This is intentional to prevent accidental AI deletion. | ✅ |
 
-## 4. Update
+## 4. Export
+
+**Endpoint:** `GET /export`
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| EXP-001 | The API MUST stream every entry as JSONL (`application/x-ndjson`, one JSON object per line, no guaranteed order) with a `Content-Disposition` attachment filename `open-brain-<UTC timestamp>.jsonl`. | ✅ |
+| EXP-002 | Each line MUST contain `id, content, source, tags, project, created_at, metadata{type,topics,people,action_items}, metadata_status`. Vectors MUST NOT be included, so exports are independent of the embedding model. | ✅ |
+| EXP-003 | Entries MUST be read in batches of 100 rather than loaded into memory at once. | ✅ |
+| EXP-004 | Export has no filters (project, date); it always covers the whole collection. | ❌ |
+
+## 5. Update
 
 | ID | Requirement | Status |
 |----|-------------|--------|

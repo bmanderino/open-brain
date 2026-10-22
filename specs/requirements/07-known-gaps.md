@@ -34,7 +34,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | FEAT-003 | Stats panel in web UI | `/stats` is only exposed to MCP today |
 | FEAT-004 | ~~Hybrid search (BM25 + vector)~~ **Done** (RRF of vector ranking and API-side BM25 over a full-text index) | Better recall for exact terms and names |
 | FEAT-005 | Chunking for long content | Embedding model context limit |
-| FEAT-006 | Export / import / backup | Data ownership; currently only Docker volume snapshots |
+| FEAT-006 | Export / import / backup (**export done** via `GET /export`; import remains) | Data ownership; currently only Docker volume snapshots |
 | FEAT-007 | Optional API key / auth | Needed for any non-local use |
 | FEAT-008 | Action-item view across all entries | Metadata already captured, not surfaced as a task list |
 | FEAT-009 | ~~MCP `source`/project namespace per project~~ **Done** (optional `project` field, unscoped entries included in project searches) | Avoid cross-project context bleed in Claude Code |
