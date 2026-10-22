@@ -65,5 +65,6 @@ def test_fuse_respects_limit():
     assert len(main.fuse(vec, [], fake_embed("x"), limit=2)) == 2
 
 
-def test_build_filter_empty_is_none():
-    assert main.build_filter() is None
+def test_build_filter_default_only_hides_superseded():
+    assert main.build_filter() == main.Filter(must=[main.NOT_SUPERSEDED])
+    assert main.build_filter(include_superseded=True) is None

@@ -137,6 +137,8 @@ Decisions to make explicit:
 
 **Done when:** Superseding an entry hides it from default search, and the add response surfaces likely candidates to replace.
 
+**Status (2026-10-22):** Built as `PATCH superseded_by` plus the `supersede_brain_entry` tool (SUP-001..007), with `include_superseded` on search and list, exclusion from `get_context` and dedup, `possibly_supersedes` on ingest (up to 3 neighbors at or above `NEIGHBOR_MIN_SCORE`, 0.6, untuned), and export/import. Deleting a replacement restores what it replaced. Not done: web UI display (SUP-007). The index on `superseded_by` and the `IsEmpty` filter are only verified against local-mode Qdrant, so try it once against the real server.
+
 ### 10. Related-entry links
 
 **Why:** The Supabase Open Brain auto-links new entries to similar ones, which gives a graph feel for browsing. Ingest already computes the nearest neighbor for dedup, so this is close to free.

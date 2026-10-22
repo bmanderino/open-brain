@@ -15,7 +15,7 @@
 
 ## 2. Tools
 
-### `search_brain(query, limit=5, project=None, type=None, tag=None, source=None) -> str`
+### `search_brain(query, limit=5, project=None, type=None, tag=None, source=None, include_superseded=False) -> str`
 - MCP-010: Calls `POST /search` (30 s timeout).
 - MCP-011: Returns `"No results found for: '<query>'"` on empty results.
 - MCP-012: Otherwise returns a numbered text list: score (3 dp), date (YYYY-MM-DD), source, project (when set), tags, content, then `type` (omitted if `other`), `topics`, `people`, `actions` lines when present.
@@ -29,6 +29,7 @@
 - MCP-024: When the API reports `duplicate_of`, the tool MUST say nothing was stored, show the existing entry's id, similarity and content, and mention `force=True`. The docstring explains this to the model.
 - MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
 - MCP-026: `pinned` is sent only when true. The docstring tells the model to pin only short, lasting facts every future session should see, and to keep pins few. A confirmation says `Pinned: yes`. When a duplicate was skipped and the caller asked to pin, the message suggests `update_brain_entry(pinned=True)` on the existing entry.
+- MCP-027: When the response has `possibly_supersedes`, the tool appends a "Possibly replaces" list (id, date, similarity, first 200 characters) and tells the model to call `supersede_brain_entry(old_id, new_id)` if the new entry makes one outdated. The docstring explains this.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.
 
 ### `update_brain_entry(entry_id, content=None, tags=None, project=None, pinned=None, reextract=False, type=None, topics=None, people=None, action_items=None) -> str`
@@ -39,12 +40,17 @@
 - MCP-065: `pinned` is sent only when given, so `False` unpins and `None` leaves the pin alone. The output includes `Pinned: yes` for pinned entries.
 - MCP-064: Metadata arguments that are `None` are not sent; an empty list is sent so it can clear a field. Validation errors from the API (e.g. an invalid `type`) are returned as `Error updating entry: ...`.
 
-### `list_brain(limit=10, project=None, type=None, tag=None, pinned=False) -> str`
+### `list_brain(limit=10, project=None, type=None, tag=None, pinned=False, include_superseded=False) -> str`
 - MCP-030: Calls `GET /entries` with `limit` and any filters.
 - MCP-031: Returns `"Your brain is empty. Add something with add_to_brain!"` when empty.
 - MCP-032: Output shows date, source, project (when set), tags, content, type, topics, people (action items are omitted, unlike search).
 - MCP-033: Returns the true newest entries (LIST-006 fixed).
 - MCP-034: `pinned=True` lists only pinned entries. Pinned entries are marked `| pinned` in `list_brain` and `search_brain` output.
+- MCP-035: `search_brain` and `list_brain` take `include_superseded` (sent only when true) and mark superseded results `| superseded by <id>` (SUP-003).
+
+### `supersede_brain_entry(old_id, new_id) -> str`
+- MCP-080: Calls `PATCH /entries/{old_id}` with `{"superseded_by": new_id}`. The docstring says to store the new entry first, that the old one is hidden from search, list and context but kept, and that `new_id=""` restores it.
+- MCP-081: Confirms the supersession (or the restore). `"No entry with id <old_id>"` on 404; the API's reason (`Not superseded: ...`) on 422 (self, unknown target, cycle).
 
 ### `get_context(project=None, recent=5) -> str`
 - MCP-070: Calls `GET /context?format=text` (30 s timeout) and returns the API's text unchanged (CTX-004).

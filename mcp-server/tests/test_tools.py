@@ -42,7 +42,7 @@ def test_all_tools_registered_with_descriptions(run, tools):
     names = {t.name: t for t in listed}
     assert set(names) == {
         "search_brain", "add_to_brain", "update_brain_entry", "list_brain", "brain_stats",
-        "get_context",
+        "get_context", "supersede_brain_entry",
     }
     # Claude reads these descriptions to decide how to call the tools
     assert "project" in names["search_brain"].description
@@ -335,6 +335,62 @@ def test_list_pinned_filter_and_flag(run, tools, api):
 def test_search_flags_pinned_results(run, tools, api):
     api.reply("POST", "/search", body={"results": [result(pinned=True), result(id="b")]})
     assert run(tools.search_brain("q")).count("| pinned") == 1
+
+
+# supersession
+
+OLD = "7b1d2c3e-0000-4000-8000-000000000001"
+
+
+def test_supersede_sends_patch_and_confirms(run, tools, api):
+    api.reply("PATCH", f"/entries/{OLD}", body=entry(id=OLD, superseded_by=ID))
+    out = run(tools.supersede_brain_entry(OLD, ID))
+    assert api.last_json() == {"superseded_by": ID}
+    assert f"{OLD} is now superseded by {ID}" in out
+
+
+def test_supersede_empty_new_id_restores(run, tools, api):
+    api.reply("PATCH", f"/entries/{OLD}", body=entry(id=OLD))
+    out = run(tools.supersede_brain_entry(OLD, ""))
+    assert api.last_json() == {"superseded_by": ""}
+    assert out.startswith(f"Restored entry {OLD}")
+
+
+def test_supersede_reports_missing_entry_and_rejections(run, tools, api):
+    api.reply("PATCH", f"/entries/{OLD}", status=404, body={"detail": "Entry not found"})
+    assert run(tools.supersede_brain_entry(OLD, ID)) == f"No entry with id {OLD}"
+    api.reply("PATCH", f"/entries/{OLD}", status=422, body={"detail": "An entry cannot supersede itself"})
+    assert run(tools.supersede_brain_entry(OLD, OLD)) == "Not superseded: An entry cannot supersede itself"
+
+
+def test_add_lists_possible_replacements(run, tools, api):
+    near = {"id": OLD, "content": "Use Postgres", "created_at": "2026-03-01T00:00:00+00:00", "score": 0.78}
+    api.reply("POST", "/ingest", body={"id": ID, "metadata": {}, "possibly_supersedes": [near]})
+    out = run(tools.add_to_brain("Use SQLite"))
+    assert "Possibly replaces" in out and f"[{OLD}] (2026-03-01, similarity 0.780) Use Postgres" in out
+    assert f'supersede_brain_entry(old_id, "{ID}")' in out
+    api.reply("POST", "/ingest", body={"id": ID, "metadata": {}, "possibly_supersedes": []})
+    assert "Possibly replaces" not in run(tools.add_to_brain("Use SQLite"))
+
+
+def test_include_superseded_is_sent_only_when_asked(run, tools, api):
+    api.reply("POST", "/search", body={"results": [result()]})
+    run(tools.search_brain("q"))
+    assert "include_superseded" not in api.last_json()
+    run(tools.search_brain("q", include_superseded=True))
+    assert api.last_json()["include_superseded"] is True
+    api.reply("GET", "/entries", body={"entries": [entry()]})
+    run(tools.list_brain())
+    assert "include_superseded" not in api.last_params()
+    run(tools.list_brain(include_superseded=True))
+    assert api.last_params()["include_superseded"] == "true"
+
+
+def test_superseded_results_are_marked(run, tools, api):
+    api.reply("POST", "/search", body={"results": [result(superseded_by=OLD)]})
+    assert f"| superseded by {OLD}" in run(tools.search_brain("q", include_superseded=True))
+    api.reply("GET", "/entries", body={"entries": [entry(superseded_by=OLD)]})
+    assert f"| superseded by {OLD}" in run(tools.list_brain(include_superseded=True))
 
 
 # get_context

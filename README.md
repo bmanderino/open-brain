@@ -143,6 +143,7 @@ Once connected, Claude Code can:
 - **`add_to_brain`** — store thoughts/decisions during a session; optional `tags`, `project`, and `pinned`
 - **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag`, `pinned` filters
 - **`update_brain_entry`** — fix an entry's content, tags, project, pinned state, or its extracted type/topics/people/action items, or re-run metadata extraction
+- **`supersede_brain_entry`** — mark an entry as replaced by a newer one so it stops appearing in searches
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
 Claude cannot delete entries; use the web UI for that.
@@ -167,6 +168,23 @@ found. Send `"mode": "semantic"` to `/search` for vector-only results.
 `duplicate_of`. Pass `force` (`"force": true` in the API, `force=True` in the tool) to store anyway.
 In testing, rewordings of the same statement scored 0.96+ and a different statement on the same
 theme scored about 0.76; raise the threshold if too much is being skipped, lower it to catch more.
+
+### Superseding outdated entries
+
+Dedup only catches near-identical text. When a decision changes ("Postgres" in March, "SQLite" in
+October), both entries stay live unless you retire the old one. After storing the new entry, call
+`supersede_brain_entry(old_id, new_id)` (or `PATCH /entries/{old_id}` with `{"superseded_by": new_id}`).
+The old entry is kept but hidden from search, list, `get_context` and dedup. Pass
+`include_superseded=True` to `search_brain` and `list_brain` (`"include_superseded": true` on
+`/search`, `?include_superseded=true` on `/entries`) to see it, marked `superseded by <id>`. Undo it with
+`supersede_brain_entry(old_id, "")`. Deleting the replacement restores the entries it replaced.
+
+To help find what to retire, every new entry's response lists up to three similar existing entries
+(same project, not superseded) as `possibly_supersedes`, with id, date and similarity, and `add_to_brain`
+shows them as "Possibly replaces". Nothing is superseded automatically: a wrong guess would silently hide a
+good entry, so the caller decides. Only entries scoring at least `NEIGHBOR_MIN_SCORE` (default `0.6`, set on
+`brain-api`) are listed; that default is a guess, not tuned on real entries. `superseded_by` is kept by
+`/export` and `/import`.
 
 ### Projects
 

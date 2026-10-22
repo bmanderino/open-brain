@@ -51,7 +51,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | ID | Requirement | Status |
 |----|-------------|--------|
 | EXP-001 | The API MUST stream every entry as JSONL (`application/x-ndjson`, one JSON object per line, no guaranteed order) with a `Content-Disposition` attachment filename `open-brain-<UTC timestamp>.jsonl`. | ✅ |
-| EXP-002 | Each line MUST contain `id, content, source, tags, project, pinned, created_at, metadata{type,topics,people,action_items}, metadata_status`. Vectors MUST NOT be included, so exports are independent of the embedding model. | ✅ |
+| EXP-002 | Each line MUST contain `id, content, source, tags, project, pinned, superseded_by, created_at, metadata{type,topics,people,action_items}, metadata_status`. Vectors MUST NOT be included, so exports are independent of the embedding model. | ✅ |
 | EXP-003 | Entries MUST be read in batches of 100 rather than loaded into memory at once. | ✅ |
 | EXP-004 | Export has no filters (project, date); it always covers the whole collection. | ❌ |
 
@@ -61,7 +61,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| IMP-001 | Each non-blank line MUST be a JSON object with at least non-empty `content`; `id, source, tags, project, pinned, created_at, metadata, metadata_status` are optional (a missing `pinned` means unpinned) and unknown keys are ignored. | ✅ |
+| IMP-001 | Each non-blank line MUST be a JSON object with at least non-empty `content`; `id, source, tags, project, pinned, superseded_by, created_at, metadata, metadata_status` are optional (a missing `pinned` means unpinned, a missing `superseded_by` means current) and unknown keys are ignored. | ✅ |
 | IMP-002 | Every imported entry MUST be re-embedded with the current embedding model. | ✅ |
 | IMP-003 | `id` and `created_at` MUST be preserved when valid (a missing `id` gets a new UUID, a missing `created_at` gets the import time). An `id` already in the collection is skipped (`skipped_existing`) unless `overwrite=true`, which replaces it. Re-importing a file is therefore safe. | ✅ |
 | IMP-004 | Metadata MUST be reused when the line has `metadata` and `metadata_status` is not `failed`; otherwise it is extracted (counted in `reextracted`). Reused metadata passes the same cleanup as extracted metadata (META-008). | ✅ |
@@ -75,7 +75,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, pinned?, reextract?, type?, topics?, people?, action_items?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
+| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, pinned?, superseded_by?, reextract?, type?, topics?, people?, action_items?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
 | UPD-002 | Changing `content` MUST re-embed the entry and re-run metadata extraction (concurrently), replacing the vector and the type/topics/people/action_items/metadata_status. `id`, `created_at`, and `source` are preserved. Empty content returns 400. | ✅ |
 | UPD-003 | `tags` replaces the whole list. `project` set to `null` or `""` removes the project key (the entry becomes unscoped). | ✅ |
 | UPD-004 | `reextract: true` MUST re-run metadata extraction without changing content or the vector, so entries with `metadata_status: failed` can be repaired. | ✅ |
@@ -97,3 +97,17 @@ A pinned entry is a short, lasting fact that every session should see without se
 | PIN-005 | Pinning does not affect dedup (a near-duplicate of an existing entry is still not stored, and the duplicate response shows whether the existing entry is pinned). The MCP tool tells the model to pin the existing entry instead. | ✅ |
 | PIN-006 | An unscoped pin (no `project`) is global: it appears in every project's context. A pin with a `project` appears only in that project's context. | ✅ |
 | PIN-007 | There is no web UI control for pinning yet; the UI neither shows nor sets `pinned`. | ❌ |
+
+### Supersession
+
+A superseded entry has been replaced by a newer one (a decision that flipped). It stays stored but is hidden by default.
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| SUP-001 | `PATCH /entries/{id}` MUST accept `superseded_by` (an entry id). It sets `superseded_by` in the payload. `null` or `""` removes the key and restores the entry; an omitted field changes nothing. | ✅ |
+| SUP-002 | The target MUST be an existing entry other than the one being edited, and MUST NOT lead back to it through a chain of `superseded_by` links. Violations return 422 and change nothing. | ✅ |
+| SUP-003 | Entries with `superseded_by` MUST be excluded from `/search`, `/entries`, `/context`, and the duplicate and neighbor checks at ingest, unless `include_superseded` is true (`/search` body, `/entries` query). `/export` and `/stats` are not filtered. | ✅ |
+| SUP-004 | `superseded_by` (null when absent) MUST be returned by search, `/entries`, `PATCH`, and `/export`, and accepted by `/import`. A keyword payload index on it is created idempotently at startup. | ✅ |
+| SUP-005 | `DELETE /entries/{id}` MUST clear `superseded_by` on every entry that pointed at the deleted one, so no entry stays hidden behind a replacement that no longer exists. | ✅ |
+| SUP-006 | `POST /ingest` MUST return `possibly_supersedes`: up to 3 entries from the same project scope (unscoped entries compare only with unscoped ones), not superseded, with similarity at least `NEIGHBOR_MIN_SCORE` (default 0.6) and, unless `force` is set, below the dedup threshold. Each has `id, content, project, pinned, created_at, score`. It shares one vector query with the duplicate check. Nothing is superseded automatically. | ✅ |
+| SUP-007 | The web UI neither shows nor sets `superseded_by` yet. | ❌ |

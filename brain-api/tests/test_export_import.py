@@ -24,8 +24,8 @@ def test_export_shape_and_no_vectors(client, add):
     add("one", project="p", tags=["t"])
     (line,) = export(client)
     assert set(line) == {
-        "id", "content", "source", "tags", "project", "pinned", "created_at", "metadata",
-        "metadata_status",
+        "id", "content", "source", "tags", "project", "pinned", "superseded_by", "created_at",
+        "metadata", "metadata_status",
     }
     assert line["metadata"]["type"] == "decision"
 

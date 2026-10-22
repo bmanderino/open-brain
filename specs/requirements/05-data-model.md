@@ -28,6 +28,7 @@
 | `tags` | string[] | user | `[]` |
 | `project` | string | client (optional; key omitted when unscoped) | `null` |
 | `pinned` | bool | client (optional; key omitted when false) | `false` |
+| `superseded_by` | string (entry id) | client (optional; key omitted when current) | `null` |
 | `created_at` | ISO-8601 UTC string | server | `""` |
 | `type` | enum string | LLM | `"other"` |
 | `topics` | string[] | LLM | `[]` |
@@ -44,6 +45,7 @@
 - DATA-015: A full-text index on `content` (word tokenizer, lowercase, min token length 2) is created idempotently at startup to support keyword search.
 - DATA-014: Keyword payload indexes on `project`, `type`, `source`, and `tags` are created idempotently at startup to support filters.
 - DATA-016: A boolean payload index on `pinned` is created idempotently at startup to support the pinned filter.
+- DATA-017: A keyword payload index on `superseded_by` is created idempotently at startup to support hiding superseded entries.
 - DATA-013: `created_at` has a datetime payload index, created idempotently at API startup, used for `order_by` in `/entries`.
 
 ## 5. Privacy

@@ -23,7 +23,7 @@
 
 ## 2. List Recent Entries
 
-**Endpoint:** `GET /entries?limit=20&before=<ISO timestamp>`; also accepts `after`, `project`, `include_unscoped`, `type`, `tag`, `source` (same semantics as search, SRCH-012) and `pinned=true` (PIN-004)
+**Endpoint:** `GET /entries?limit=20&before=<ISO timestamp>`; also accepts `after`, `project`, `include_unscoped`, `type`, `tag`, `source` (same semantics as search, SRCH-012) and `pinned=true` (PIN-004) and `include_superseded=true` (SUP-003)
 
 | ID | Requirement | Status |
 |----|-------------|--------|

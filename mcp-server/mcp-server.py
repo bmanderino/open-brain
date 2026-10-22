@@ -17,6 +17,7 @@ async def search_brain(
     type: str | None = None,
     tag: str | None = None,
     source: str | None = None,
+    include_superseded: bool = False,
 ) -> str:
     """Search your personal Open Brain knowledge base using semantic search.
     Use this to recall past thoughts, decisions, notes, or anything stored.
@@ -26,8 +27,13 @@ async def search_brain(
     Optional filters: project (the current repo/project name; also returns entries not tied
     to any project, such as general preferences), type (decision, idea, meeting, action_item,
     reference, question, reflection, other), tag (exact tag), source (e.g. 'mcp', 'web-ui').
+
+    Entries that a newer entry replaced (see supersede_brain_entry) are hidden. Set
+    include_superseded=True to see them too, e.g. to audit how a decision changed.
     """
     body = {"query": query, "limit": limit}
+    if include_superseded:
+        body["include_superseded"] = True
     if project:
         body["project"] = project
     if type:
@@ -54,6 +60,8 @@ async def search_brain(
             proj = f" | project: {r['project']}" if r.get("project") else ""
             kw = " | exact-term match" if r.get("match") in ("keyword", "both") else ""
             pin = " | pinned" if r.get("pinned") else ""
+            if r.get("superseded_by"):
+                pin += f" | superseded by {r['superseded_by']}"
             lines.append(f"{i}. [{r['id']}] (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{pin}{tags})")
             lines.append(f"   {r['content']}")
 
@@ -93,6 +101,10 @@ async def add_to_brain(
 
     Near-duplicates of an existing entry (same project) are not stored again; the tool says so
     and returns the existing entry. Set force=True only if the new entry is genuinely different.
+
+    If the new entry is close to existing ones, they are listed as "Possibly replaces". When the
+    new entry changes or reverses one of them (a decision that flipped, a preference that
+    changed), call supersede_brain_entry so the old one stops showing up in searches.
     """
     tags = tags or []
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -139,7 +151,20 @@ async def add_to_brain(
             )
         meta_str = ("\n" + "\n".join(meta_parts)) if meta_parts else ""
 
-        return f"Stored in brain (id: {data['id']})\n\n\"{content}\"{tag_str}{meta_str}"
+        similar = ""
+        if data.get("possibly_supersedes"):
+            rows = [
+                f"- [{n['id']}] ({n['created_at'][:10]}, similarity {n['score']:.3f}) "
+                f"{' '.join(n['content'].split())[:200]}"
+                for n in data["possibly_supersedes"]
+            ]
+            similar = (
+                "\n\nPossibly replaces (similar existing entries; if the new entry makes one "
+                f"outdated, call supersede_brain_entry(old_id, \"{data['id']}\")):\n"
+                + "\n".join(rows)
+            )
+
+        return f"Stored in brain (id: {data['id']})\n\n\"{content}\"{tag_str}{meta_str}{similar}"
 
 
 @mcp.tool()
@@ -210,6 +235,40 @@ async def update_brain_entry(
 
 
 @mcp.tool()
+async def supersede_brain_entry(old_id: str, new_id: str) -> str:
+    """Mark an entry as outdated because a newer entry replaces it, e.g. a decision that was
+    reversed. The old entry is hidden from search_brain, list_brain and get_context but stays
+    stored; pass include_superseded=True to those tools to see it. Get ids from search_brain,
+    list_brain, or the "Possibly replaces" list that add_to_brain returns. Store the new entry
+    first, then call this with the old entry's id and the new entry's id.
+
+    To undo it, pass new_id="" and the old entry shows up again.
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.patch(
+            f"{BRAIN_API_URL}/entries/{old_id}", json={"superseded_by": new_id}
+        )
+        if resp.status_code == 404:
+            return f"No entry with id {old_id}"
+        if resp.status_code == 422:
+            try:
+                detail = resp.json().get("detail", resp.text)
+            except ValueError:
+                detail = resp.text
+            return f"Not superseded: {detail}"
+        if resp.status_code != 200:
+            return f"Error superseding entry: {resp.text}"
+        e = resp.json()
+        if not e.get("superseded_by"):
+            return f"Restored entry {e['id']}; it shows up in searches again."
+        return (
+            f"Entry {e['id']} is now superseded by {e['superseded_by']} and hidden from "
+            "search, list and context.\n\n"
+            f"\"{e['content']}\""
+        )
+
+
+@mcp.tool()
 async def get_context(project: str | None = None, recent: int = 5) -> str:
     """Get the context worth knowing at the start of work: pinned entries first, then the most
     recent entries, for one project plus anything not tied to a project. Call this at the start
@@ -234,13 +293,17 @@ async def list_brain(
     type: str | None = None,
     tag: str | None = None,
     pinned: bool = False,
+    include_superseded: bool = False,
 ) -> str:
     """List the most recent entries in the Open Brain knowledge base, newest first.
     Optional filters: project (also includes entries not tied to any project),
     type (decision, idea, meeting, action_item, reference, question, reflection, other),
-    tag (exact tag), pinned=True (only pinned entries).
+    tag (exact tag), pinned=True (only pinned entries). Superseded entries are hidden unless
+    include_superseded=True.
     """
     params: dict = {"limit": limit}
+    if include_superseded:
+        params["include_superseded"] = "true"
     if pinned:
         params["pinned"] = "true"
     if project:
@@ -266,6 +329,8 @@ async def list_brain(
             date = e.get("created_at", "")[:10] if e.get("created_at") else "unknown"
             proj = f" | project: {e['project']}" if e.get("project") else ""
             pin = " | pinned" if e.get("pinned") else ""
+            if e.get("superseded_by"):
+                pin += f" | superseded by {e['superseded_by']}"
             lines.append(f"{i}. [{e['id']}] ({date} | {e['source']}{proj}{pin}{tags})")
             lines.append(f"   {e['content']}")
 

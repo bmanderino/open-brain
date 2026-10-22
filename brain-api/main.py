@@ -52,6 +52,10 @@ METADATA_TIMEOUT = float(os.getenv("METADATA_TIMEOUT", 60))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", 0.92))  # cosine score; >1 disables
 CONTEXT_MAX_PINNED = 20  # cap on pinned entries in GET /context, so injected context stays small
 CONTEXT_MAX_CHARS = 800  # per-entry cap in GET /context?format=text
+# Ingest also returns the closest existing entries below the dedup threshold, as candidates the
+# caller may want to supersede. Untuned guess: a flipped decision scored near 0.76 in sampling.
+NEIGHBOR_LIMIT = 3
+NEIGHBOR_MIN_SCORE = float(os.getenv("NEIGHBOR_MIN_SCORE", 0.6))
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
@@ -99,7 +103,7 @@ async def startup():
             lowercase=True,
         ),
     )
-    for field in ("project", "type", "source", "tags"):
+    for field in ("project", "type", "source", "tags", "superseded_by"):
         qdrant.create_payload_index(
             collection_name=COLLECTION,
             field_name=field,
@@ -176,6 +180,7 @@ class UpdateRequest(BaseModel):
     topics: Optional[list[str]] = None
     people: Optional[list[str]] = None
     action_items: Optional[list[str]] = None
+    superseded_by: Optional[str] = None  # id of the entry that replaces this one; null or "" restores it
 
     @field_validator("type")
     @classmethod
@@ -183,6 +188,16 @@ class UpdateRequest(BaseModel):
         if v is not None and v not in ENTRY_TYPES:
             raise ValueError(f"type must be one of: {', '.join(sorted(ENTRY_TYPES))}")
         return v
+
+
+class Neighbor(BaseModel):
+    """An existing entry close to a newly stored one; the caller decides if it is now outdated."""
+    id: str
+    content: str
+    project: Optional[str] = None
+    pinned: bool = False
+    created_at: str
+    score: float  # cosine similarity to the new entry
 
 
 class IngestResponse(BaseModel):
@@ -197,6 +212,8 @@ class IngestResponse(BaseModel):
     metadata_status: Optional[str] = None  # "ok" or "failed"; None on entries stored before this field existed
     duplicate_of: Optional[str] = None  # set when an existing near-duplicate was returned instead
     duplicate_score: Optional[float] = None
+    superseded_by: Optional[str] = None
+    possibly_supersedes: list[Neighbor] = []  # closest existing entries below the dedup threshold
 
 
 class SearchRequest(BaseModel):
@@ -210,6 +227,7 @@ class SearchRequest(BaseModel):
     created_after: Optional[str] = None
     created_before: Optional[str] = None
     mode: Literal["hybrid", "semantic"] = "hybrid"  # hybrid adds exact-term matching
+    include_superseded: bool = False  # also return entries that a newer entry replaced
 
 
 class SearchResult(BaseModel):
@@ -220,6 +238,7 @@ class SearchResult(BaseModel):
     project: Optional[str] = None
     pinned: bool = False
     created_at: str
+    superseded_by: Optional[str] = None
     score: float  # cosine similarity to the query
     match: str = "semantic"  # semantic | keyword | both
     metadata: Metadata
@@ -308,6 +327,7 @@ def entry_dict(entry_id, payload: dict) -> dict:
         "tags": payload.get("tags", []),
         "project": payload.get("project"),
         "pinned": payload.get("pinned", False),
+        "superseded_by": payload.get("superseded_by"),
         "created_at": payload.get("created_at", ""),
         "type": payload.get("type", "other"),
         "topics": payload.get("topics", []),
@@ -334,6 +354,30 @@ def get_point(entry_id: str, with_vectors: bool = False):
     return found[0]
 
 
+def check_replacement(entry_id: str, replacement: str) -> str:
+    """Validate a superseded_by target and return its normalized id: a UUID of another
+    existing entry that does not (directly or through a chain) point back at entry_id."""
+    try:
+        target = str(uuid.UUID(replacement))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="superseded_by must be an entry id") from None
+    if target == str(uuid.UUID(entry_id)):
+        raise HTTPException(status_code=422, detail="An entry cannot supersede itself")
+    seen = set()
+    current: Optional[str] = target
+    while current and current not in seen:
+        seen.add(current)
+        found = qdrant.retrieve(
+            collection_name=COLLECTION, ids=[current], with_payload=True, with_vectors=False
+        )
+        if not found:
+            raise HTTPException(status_code=422, detail=f"No entry with id {current} to supersede with")
+        current = found[0].payload.get("superseded_by")
+        if current and str(uuid.UUID(entry_id)) == current:
+            raise HTTPException(status_code=422, detail="That would make the supersession circular")
+    return target
+
+
 def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
     if not value:
         return None
@@ -342,6 +386,9 @@ def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
     except ValueError:
         raise HTTPException(status_code=422, detail=f"{name} must be an ISO 8601 timestamp") from None
     return value
+
+
+NOT_SUPERSEDED = IsEmptyCondition(is_empty=PayloadField(key="superseded_by"))
 
 
 def build_filter(
@@ -354,11 +401,15 @@ def build_filter(
     created_before: Optional[str] = None,
     pinned: Optional[bool] = None,
     unscoped_only: bool = False,
+    include_superseded: bool = False,
 ) -> Optional[Filter]:
     """AND together whichever filters were given. A project filter also matches
     entries with no project (unscoped) unless include_unscoped is false. With no project,
-    unscoped_only restricts to entries that have none (otherwise every project matches)."""
+    unscoped_only restricts to entries that have none (otherwise every project matches).
+    Entries that a newer entry replaced (superseded_by) are left out unless include_superseded."""
     must = []
+    if not include_superseded:
+        must.append(NOT_SUPERSEDED)
     if pinned:  # pinned=False is not a filter: unpinned entries simply have no pinned key
         must.append(FieldCondition(key="pinned", match=MatchValue(value=True)))
     if not project and unscoped_only:
@@ -541,39 +592,52 @@ async def ingest(req: IngestRequest):
         extract_metadata(req.content),
     )
 
-    if not req.force:
-        # Duplicates are judged within the same project scope (or among unscoped entries)
-        if project:
-            scope = FieldCondition(key="project", match=MatchValue(value=project))
-        else:
-            scope = IsEmptyCondition(is_empty=PayloadField(key="project"))
-        top = qdrant.query_points(
-            collection_name=COLLECTION,
-            query=embedding,
-            limit=1,
-            query_filter=Filter(must=[scope]),
-            with_payload=True,
-        ).points
-        if top and top[0].score >= DEDUP_THRESHOLD:
-            hit = top[0]
-            return IngestResponse(
-                id=str(hit.id),
-                content=hit.payload["content"],
-                source=hit.payload.get("source", "unknown"),
-                tags=hit.payload.get("tags", []),
-                project=hit.payload.get("project"),
-                pinned=hit.payload.get("pinned", False),
-                created_at=hit.payload.get("created_at", ""),
-                metadata=Metadata(
-                    type=hit.payload.get("type", "other"),
-                    topics=hit.payload.get("topics", []),
-                    people=hit.payload.get("people", []),
-                    action_items=hit.payload.get("action_items", []),
-                ),
-                metadata_status=hit.payload.get("metadata_status"),
-                duplicate_of=str(hit.id),
-                duplicate_score=hit.score,
-            )
+    # One lookup serves both the duplicate check and the supersede candidates. Both are judged
+    # within the same project scope (or among unscoped entries), and ignore superseded entries.
+    if project:
+        scope = FieldCondition(key="project", match=MatchValue(value=project))
+    else:
+        scope = IsEmptyCondition(is_empty=PayloadField(key="project"))
+    nearest = qdrant.query_points(
+        collection_name=COLLECTION,
+        query=embedding,
+        limit=NEIGHBOR_LIMIT,
+        query_filter=Filter(must=[scope, NOT_SUPERSEDED]),
+        with_payload=True,
+    ).points
+
+    if not req.force and nearest and nearest[0].score >= DEDUP_THRESHOLD:
+        hit = nearest[0]
+        return IngestResponse(
+            id=str(hit.id),
+            content=hit.payload["content"],
+            source=hit.payload.get("source", "unknown"),
+            tags=hit.payload.get("tags", []),
+            project=hit.payload.get("project"),
+            pinned=hit.payload.get("pinned", False),
+            created_at=hit.payload.get("created_at", ""),
+            metadata=Metadata(
+                type=hit.payload.get("type", "other"),
+                topics=hit.payload.get("topics", []),
+                people=hit.payload.get("people", []),
+                action_items=hit.payload.get("action_items", []),
+            ),
+            metadata_status=hit.payload.get("metadata_status"),
+            duplicate_of=str(hit.id),
+            duplicate_score=hit.score,
+        )
+    possibly_supersedes = [
+        Neighbor(
+            id=str(hit.id),
+            content=hit.payload["content"],
+            project=hit.payload.get("project"),
+            pinned=hit.payload.get("pinned", False),
+            created_at=hit.payload.get("created_at", ""),
+            score=hit.score,
+        )
+        for hit in nearest
+        if hit.score >= NEIGHBOR_MIN_SCORE
+    ]
 
     entry_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
@@ -611,6 +675,7 @@ async def ingest(req: IngestRequest):
         created_at=created_at,
         metadata=metadata,
         metadata_status=metadata_status,
+        possibly_supersedes=possibly_supersedes,
     )
 
 
@@ -629,6 +694,7 @@ async def search(req: SearchRequest):
         source=req.source_filter,
         created_after=req.created_after,
         created_before=req.created_before,
+        include_superseded=req.include_superseded,
     )
 
     pool = min(req.limit * 3, 100)  # candidates per ranking before fusion
@@ -655,6 +721,7 @@ async def search(req: SearchRequest):
             project=hit.payload.get("project"),
             pinned=hit.payload.get("pinned", False),
             created_at=hit.payload.get("created_at", ""),
+            superseded_by=hit.payload.get("superseded_by"),
             score=score,
             match=match,
             metadata=Metadata(
@@ -681,6 +748,7 @@ async def list_entries(
     tag: Optional[str] = None,
     source: Optional[str] = None,
     pinned: Optional[bool] = None,
+    include_superseded: bool = False,
 ):
     """Newest-first. Page by passing the previous response's next_before as before."""
     query_filter = build_filter(
@@ -692,6 +760,7 @@ async def list_entries(
         created_after=after,
         created_before=before,
         pinned=pinned,
+        include_superseded=include_superseded,
     )
     results, _ = qdrant.scroll(
         collection_name=COLLECTION,
@@ -799,6 +868,13 @@ async def update_entry(entry_id: str, req: UpdateRequest):
     payload: dict = {}
     clear: list[str] = []
 
+    if "superseded_by" in req.model_fields_set:
+        replacement = req.superseded_by.strip() if req.superseded_by else ""
+        if replacement:
+            payload["superseded_by"] = check_replacement(entry_id, replacement)
+        elif "superseded_by" in point.payload:
+            clear.append("superseded_by")
+
     if "tags" in req.model_fields_set and req.tags is not None:
         payload["tags"] = req.tags
     if "project" in req.model_fields_set:
@@ -868,6 +944,22 @@ async def delete_entry(entry_id: str):
         collection_name=COLLECTION,
         points_selector=[entry_id],
     )
+    # Entries it replaced would otherwise stay hidden behind a replacement that no longer exists
+    orphans, _ = qdrant.scroll(
+        collection_name=COLLECTION,
+        scroll_filter=Filter(
+            must=[FieldCondition(key="superseded_by", match=MatchValue(value=entry_id))]
+        ),
+        limit=1000,
+        with_payload=False,
+        with_vectors=False,
+    )
+    if orphans:
+        qdrant.delete_payload(
+            collection_name=COLLECTION,
+            keys=["superseded_by"],
+            points=[str(o.id) for o in orphans],
+        )
     return {"deleted": entry_id}
 
 
@@ -881,6 +973,7 @@ def export_line(point) -> str:
             "tags": p.get("tags", []),
             "project": p.get("project"),
             "pinned": p.get("pinned", False),
+            "superseded_by": p.get("superseded_by"),
             "created_at": p.get("created_at", ""),
             "metadata": {
                 "type": p.get("type", "other"),
@@ -934,6 +1027,7 @@ class ImportLine(BaseModel):
     tags: Optional[list[str]] = None
     project: Optional[str] = None
     pinned: bool = False
+    superseded_by: Optional[str] = None
     created_at: Optional[str] = None
     metadata: Optional[dict] = None
     metadata_status: Optional[str] = None
@@ -991,6 +1085,7 @@ async def import_entries(request: Request, overwrite: bool = False):
                         "tags": line.tags or [],
                         **({"project": project} if project else {}),
                         **({"pinned": True} if line.pinned else {}),
+                        **({"superseded_by": line.superseded_by} if line.superseded_by else {}),
                         "created_at": line.created_at or datetime.now(timezone.utc).isoformat(),
                         "type": metadata.type,
                         "topics": metadata.topics,
