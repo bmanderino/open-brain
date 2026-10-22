@@ -107,6 +107,21 @@ async def startup():
 
 # Models
 
+PLACEHOLDERS = {"", "none", "n/a", "na", "null", "nil", "unknown"}
+# "None mentioned", "no one", "Not applicable"... but not "Nonetheless Inc" or a person named Nil
+PLACEHOLDER_PHRASE = re.compile(
+    r"^(none|no (one|people|names?|topics?|actions?|action items?)|"
+    r"not (mentioned|applicable|specified|available))\b",
+    re.IGNORECASE,
+)
+
+
+def is_placeholder(value: str) -> bool:
+    """True for the filler text small models return instead of an empty list."""
+    value = value.strip()
+    return value.lower() in PLACEHOLDERS or bool(PLACEHOLDER_PHRASE.match(value))
+
+
 class Metadata(BaseModel):
     type: str = "other"
     topics: list[str] = []
@@ -121,8 +136,7 @@ class Metadata(BaseModel):
             return []
         if isinstance(v, str):
             v = [v]
-        placeholders = {"", "none", "n/a", "na", "null", "nil", "unknown"}
-        return [x.strip() for x in v if isinstance(x, str) and x.strip().lower() not in placeholders]
+        return [x.strip() for x in v if isinstance(x, str) and not is_placeholder(x)]
 
     @field_validator("type")
     @classmethod

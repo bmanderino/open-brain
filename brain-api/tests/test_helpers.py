@@ -10,6 +10,22 @@ def test_metadata_drops_placeholder_values():
     assert m.topics == ["x"]
 
 
+def test_metadata_drops_placeholder_phrases():
+    m = main.Metadata(
+        people=["None mentioned", "no one", "Not applicable", "NONE.", "Dana"],
+        action_items=["No action items", "Not specified", "none identified"],
+        topics=["No topics", "not available", "qdrant"],
+    )
+    assert m.people == ["Dana"]
+    assert m.action_items == []
+    assert m.topics == ["qdrant"]
+
+
+def test_metadata_keeps_values_that_merely_start_like_placeholders():
+    names = ["Nonetheless Inc", "Nilsson", "Nil Smith", "Nora", "Notable changes", "Nobody Corp"]
+    assert main.Metadata(people=names).people == names
+
+
 def test_metadata_wraps_bare_string_and_coerces_type():
     m = main.Metadata(topics="infra", type="nonsense")
     assert m.topics == ["infra"]
