@@ -146,6 +146,15 @@ Example prompts in Claude Code:
 - "Add to my brain that I decided to use Qdrant over Pinecone because of the Docker-native setup"
 - "Before we start, check my brain for any context on this project"
 
+### Duplicates
+
+`add_to_brain` and `POST /ingest` skip near-duplicates: if an existing entry in the same project
+(or among unscoped entries) has a cosine similarity of at least `DEDUP_THRESHOLD` (default
+`0.92`, set on `brain-api`), nothing is stored and the existing entry is returned with
+`duplicate_of`. Pass `force` (`"force": true` in the API, `force=True` in the tool) to store anyway.
+In testing, rewordings of the same statement scored 0.96+ and a different statement on the same
+theme scored about 0.76; raise the threshold if too much is being skipped, lower it to catch more.
+
 ### Projects
 
 Entries can be tagged with a `project` (for example the repo name) so context from different

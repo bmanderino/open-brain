@@ -8,7 +8,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| CAP-001 | The API MUST accept JSON `{content: string, source?: string, tags?: string[], project?: string}`. `source` defaults to `"manual"`, `tags` to `[]` (a `null` is normalized to `[]`). `project` is optional; blank values are treated as absent and the key is not stored. | ✅ |
+| CAP-001 | The API MUST accept JSON `{content: string, source?: string, tags?: string[], project?: string, force?: bool}`. `source` defaults to `"manual"`, `tags` to `[]` (a `null` is normalized to `[]`). `project` is optional; blank values are treated as absent and the key is not stored. | ✅ |
 | CAP-002 | The API MUST reject empty or whitespace-only `content` with HTTP 400 `"Content cannot be empty"`. | ✅ |
 | CAP-003 | The API MUST generate a UUIDv4 `id` and a UTC ISO-8601 `created_at` timestamp server-side. | ✅ |
 | CAP-004 | The API MUST generate an embedding of `content` via Ollama and store it as the point vector. | ✅ |
@@ -17,7 +17,7 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | CAP-007 | The response MUST return `id, content, source, tags, project, created_at, metadata` (`project` is `null` when unscoped). | ✅ |
 | CAP-008 | `source` SHOULD identify the origin surface. Current values: `web-ui`, `mcp`, `cli` (user-supplied), `manual` (default). | ✅ |
 | CAP-009 | The API SHOULD enforce a maximum content length or chunk long content to fit the embedding model's context window. | ❌ |
-| CAP-010 | The API MAY de-duplicate identical or near-identical content. | ❌ |
+| CAP-010 | The API SHOULD skip near-identical content. Before inserting, it MUST look up the top match within the same project scope (same `project`, or among unscoped entries when none is given); if its cosine score is ≥ `DEDUP_THRESHOLD` (default 0.92) it MUST NOT insert and instead returns the existing entry with `duplicate_of` (its id) and `duplicate_score`. `force: true` in the request bypasses the check. | ✅ |
 
 ## 2. Automatic Metadata Extraction
 

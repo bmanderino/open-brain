@@ -21,9 +21,10 @@
 - MCP-012: Otherwise returns a numbered text list: score (3 dp), date (YYYY-MM-DD), source, project (when set), tags, content, then `type` (omitted if `other`), `topics`, `people`, `actions` lines when present.
 - MCP-013: Exposes `project`, `type`, `tag`, and `source` filters (`source` maps to the API's `source_filter`). The docstring tells the model that `project` also returns unscoped entries.
 
-### `add_to_brain(content, tags=None, project=None) -> str`
+### `add_to_brain(content, tags=None, project=None, force=False) -> str`
 - MCP-020: Calls `POST /ingest` with `source="mcp"` (60 s timeout to allow for LLM extraction).
 - MCP-021: Returns a confirmation containing the new id, the stored content, tags, project (when set), and extracted type/topics/people/action items when present.
+- MCP-024: When the API reports `duplicate_of`, the tool MUST say nothing was stored, show the existing entry's id, similarity and content, and mention `force=True`. The docstring explains this to the model.
 - MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.
 

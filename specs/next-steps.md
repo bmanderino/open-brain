@@ -36,7 +36,9 @@ Implemented: optional `project` field, keyword indexes, shared filter builder fo
 
 **Done when:** Entries added with `project="foo"` don't show up in searches scoped to `project="bar"`, old entries still work, and the filters are documented in the README.
 
-### 3. Dedup on ingest
+### 3. ~~Dedup on ingest~~ Done
+
+Implemented with `DEDUP_THRESHOLD` (default 0.92), scoped per project, a `force` override, and `duplicate_of` in the ingest response. Paraphrases scored 0.96+ and a same-theme different statement 0.76, so the default holds up on a small sample; revisit with real data.
 
 **Why:** There's nothing stopping Claude from storing the same decision repeatedly across sessions. That adds noise and drags down search quality over time.
 

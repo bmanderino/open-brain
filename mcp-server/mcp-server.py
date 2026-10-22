@@ -72,6 +72,7 @@ async def add_to_brain(
     content: str,
     tags: list[str] | None = None,
     project: str | None = None,
+    force: bool = False,
 ) -> str:
     """Store a thought, decision, note, or piece of information into the Open Brain knowledge base.
     Use this to save things worth remembering -- architectural decisions, ideas, things learned, etc.
@@ -79,17 +80,26 @@ async def add_to_brain(
     Pass project (the current repo/project name) for anything specific to one project, so it
     doesn't surface in other projects' searches. Omit it for general preferences or knowledge
     that applies everywhere.
+
+    Near-duplicates of an existing entry (same project) are not stored again; the tool says so
+    and returns the existing entry. Set force=True only if the new entry is genuinely different.
     """
     tags = tags or []
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             f"{BRAIN_API_URL}/ingest",
-            json={"content": content, "tags": tags, "source": "mcp", "project": project},
+            json={"content": content, "tags": tags, "source": "mcp", "project": project, "force": force},
         )
         if resp.status_code != 200:
             return f"Error storing in brain: {resp.text}"
 
         data = resp.json()
+        if data.get("duplicate_of"):
+            return (
+                f"Not stored: a near-duplicate already exists (id: {data['duplicate_of']}, "
+                f"similarity {data['duplicate_score']:.3f}).\n\n\"{data['content']}\"\n\n"
+                "Use force=True if this is genuinely a different entry."
+            )
         tag_str = f"\nTags: {', '.join(tags)}" if tags else ""
         if data.get("project"):
             tag_str += f"\nProject: {data['project']}"

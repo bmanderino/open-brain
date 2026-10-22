@@ -30,6 +30,7 @@
 | `OLLAMA_EMBED_MODEL` | brain-api | `nomic-embed-text` | Embedding model |
 | `OLLAMA_LLM_MODEL` | brain-api | `llama3.2` | Metadata extraction model |
 | `COLLECTION_NAME` | brain-api | `brain` | Qdrant collection |
+| `DEDUP_THRESHOLD` | brain-api | `0.92` | Cosine score at/above which an ingest is treated as a near-duplicate and not stored (values above 1 disable) |
 | `CORS_ORIGINS` | brain-api | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated browser origins allowed to call the API |
 | `BRAIN_API_URL` | mcp-server | `http://brain-api:8000` | Upstream API |
 | `PORT` | mcp-server | `3000` | Listen port |

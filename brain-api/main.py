@@ -39,6 +39,7 @@ CORS_ORIGINS = [
     for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     if o.strip()
 ]
+DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", 0.92))  # cosine score; >1 disables
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
@@ -104,6 +105,7 @@ class IngestRequest(BaseModel):
     source: Optional[str] = "manual"
     tags: Optional[list[str]] = []
     project: Optional[str] = None
+    force: bool = False  # skip the near-duplicate check
 
 
 class IngestResponse(BaseModel):
@@ -114,6 +116,8 @@ class IngestResponse(BaseModel):
     project: Optional[str] = None
     created_at: str
     metadata: Metadata
+    duplicate_of: Optional[str] = None  # set when an existing near-duplicate was returned instead
+    duplicate_score: Optional[float] = None
 
 
 class SearchRequest(BaseModel):
@@ -275,6 +279,38 @@ async def ingest(req: IngestRequest):
         get_embedding(req.content),
         extract_metadata(req.content),
     )
+
+    if not req.force:
+        # Duplicates are judged within the same project scope (or among unscoped entries)
+        if project:
+            scope = FieldCondition(key="project", match=MatchValue(value=project))
+        else:
+            scope = IsEmptyCondition(is_empty=PayloadField(key="project"))
+        top = qdrant.search(
+            collection_name=COLLECTION,
+            query_vector=embedding,
+            limit=1,
+            query_filter=Filter(must=[scope]),
+            with_payload=True,
+        )
+        if top and top[0].score >= DEDUP_THRESHOLD:
+            hit = top[0]
+            return IngestResponse(
+                id=str(hit.id),
+                content=hit.payload["content"],
+                source=hit.payload.get("source", "unknown"),
+                tags=hit.payload.get("tags", []),
+                project=hit.payload.get("project"),
+                created_at=hit.payload.get("created_at", ""),
+                metadata=Metadata(
+                    type=hit.payload.get("type", "other"),
+                    topics=hit.payload.get("topics", []),
+                    people=hit.payload.get("people", []),
+                    action_items=hit.payload.get("action_items", []),
+                ),
+                duplicate_of=str(hit.id),
+                duplicate_score=hit.score,
+            )
 
     entry_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
