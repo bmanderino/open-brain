@@ -51,7 +51,7 @@ CORS_ORIGINS = [
 METADATA_TIMEOUT = float(os.getenv("METADATA_TIMEOUT", 60))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", 0.92))  # cosine score; >1 disables
 CONTEXT_MAX_PINNED = 20  # cap on pinned entries in GET /context, so injected context stays small
-CONTEXT_MAX_CHARS = 400  # per-entry cap in GET /context?format=text
+CONTEXT_MAX_CHARS = 800  # per-entry cap in GET /context?format=text
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
