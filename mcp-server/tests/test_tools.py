@@ -201,6 +201,28 @@ def test_update_content_and_reextract(run, tools, api):
     assert api.last_json() == {"reextract": True, "content": "new"}
 
 
+def test_update_sends_metadata_fields_only_when_given(run, tools, api):
+    api.reply("PATCH", f"/entries/{ID}", body=entry())
+    run(tools.update_brain_entry(ID, people=["Dana"], type="meeting"))
+    assert api.last_json() == {"reextract": False, "people": ["Dana"], "type": "meeting"}
+
+
+def test_update_empty_metadata_list_clears_it(run, tools, api):
+    api.reply("PATCH", f"/entries/{ID}", body=entry())
+    run(tools.update_brain_entry(ID, topics=[], action_items=[]))
+    assert api.last_json() == {"reextract": False, "topics": [], "action_items": []}
+
+
+def test_update_invalid_type_error_is_reported(run, tools, api):
+    api.reply("PATCH", f"/entries/{ID}", status=422, body="type must be one of: ...")
+    assert run(tools.update_brain_entry(ID, type="banana")).startswith("Error updating entry:")
+
+
+def test_update_docstring_mentions_metadata_editing(run, tools):
+    desc = {t.name: t.description for t in run(tools.mcp.list_tools())}["update_brain_entry"]
+    assert "people" in desc and "action_items" in desc and "manual" in desc
+
+
 def test_update_output(run, tools, api):
     api.reply("PATCH", f"/entries/{ID}", body=entry(
         content="new text", project="p", tags=["t"], type="decision", topics=["x"],

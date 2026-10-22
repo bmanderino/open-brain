@@ -141,7 +141,7 @@ Once connected, Claude Code can:
 - **`search_brain`** — semantic search over everything you've stored; optional `project`, `type`, `tag`, `source` filters
 - **`add_to_brain`** — store thoughts/decisions during a session; optional `tags` and `project`
 - **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag` filters
-- **`update_brain_entry`** — fix an entry's content, tags, or project, or re-run metadata extraction
+- **`update_brain_entry`** — fix an entry's content, tags, project, or its extracted type/topics/people/action items, or re-run metadata extraction
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
 Claude cannot delete entries; use the web UI for that.
@@ -220,6 +220,17 @@ extraction alone, e.g. for entries marked `metadata_status: failed`):
 curl -X PATCH http://localhost:8000/entries/<id> \
   -H "Content-Type: application/json" \
   -d '{"tags": ["decision"], "project": "open-brain"}'
+```
+
+The extracted metadata can be corrected by hand with `type`, `topics`, `people`, and `action_items`
+(a list replaces the old one and `[]` clears it). This is the fix for things the local model gets
+wrong, such as a tool name listed under people. Edited entries are marked
+`metadata_status: "manual"`; a later `reextract` would overwrite your edits.
+
+```bash
+curl -X PATCH http://localhost:8000/entries/<id> \
+  -H "Content-Type: application/json" \
+  -d '{"type": "decision", "people": []}'
 ```
 
 **Export everything** as JSONL (one entry per line, no vectors, so it works with any embedding

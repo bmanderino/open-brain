@@ -107,6 +107,9 @@ async def startup():
 
 # Models
 
+ENTRY_TYPES = {
+    "decision", "idea", "meeting", "action_item", "reference", "question", "reflection", "other",
+}
 PLACEHOLDERS = {"", "none", "n/a", "na", "null", "nil", "unknown"}
 # "None mentioned", "no one", "Not applicable"... but not "Nonetheless Inc" or a person named Nil
 PLACEHOLDER_PHRASE = re.compile(
@@ -141,8 +144,7 @@ class Metadata(BaseModel):
     @field_validator("type")
     @classmethod
     def coerce_type(cls, v: str) -> str:
-        valid = {"decision", "idea", "meeting", "action_item", "reference", "question", "reflection", "other"}
-        return v if v in valid else "other"
+        return v if v in ENTRY_TYPES else "other"
 
 
 class IngestRequest(BaseModel):
@@ -154,11 +156,24 @@ class IngestRequest(BaseModel):
 
 
 class UpdateRequest(BaseModel):
-    """Only fields that are sent are changed. project: null or "" clears it."""
+    """Only fields that are sent are changed. project: null or "" clears it. The metadata
+    fields (type, topics, people, action_items) hand-edit what the LLM extracted; a list
+    replaces the old one and [] clears it. They win over extraction in the same request."""
     content: Optional[str] = None
     tags: Optional[list[str]] = None
     project: Optional[str] = None
     reextract: bool = False  # re-run metadata extraction without changing content
+    type: Optional[str] = None
+    topics: Optional[list[str]] = None
+    people: Optional[list[str]] = None
+    action_items: Optional[list[str]] = None
+
+    @field_validator("type")
+    @classmethod
+    def valid_type(cls, v):
+        if v is not None and v not in ENTRY_TYPES:
+            raise ValueError(f"type must be one of: {', '.join(sorted(ENTRY_TYPES))}")
+        return v
 
 
 class IngestResponse(BaseModel):
@@ -668,8 +683,10 @@ async def list_entries(
 
 @app.patch("/entries/{entry_id}")
 async def update_entry(entry_id: str, req: UpdateRequest):
-    """Edit content, tags, or project. Changing content re-embeds and re-extracts
-    metadata; reextract=true re-runs extraction alone (e.g. for metadata_status failed)."""
+    """Edit content, tags, project, or the extracted metadata by hand. Changing content
+    re-embeds and re-extracts metadata; reextract=true re-runs extraction alone (e.g. for
+    metadata_status failed). Hand-edited metadata fields override extraction and set
+    metadata_status to "manual"."""
     point = get_point(entry_id)
     payload: dict = {}
     clear: list[str] = []
@@ -707,6 +724,16 @@ async def update_entry(entry_id: str, req: UpdateRequest):
                 "metadata_status": status,
             }
         )
+
+    manual = {
+        k: getattr(req, k)
+        for k in ("type", "topics", "people", "action_items")
+        if k in req.model_fields_set and getattr(req, k) is not None
+    }
+    if manual:
+        cleaned = Metadata(**manual)  # same placeholder cleanup as extracted metadata
+        payload.update({k: getattr(cleaned, k) for k in manual})
+        payload["metadata_status"] = "manual"
 
     if new_vector is not None:
         qdrant.update_vectors(

@@ -134,12 +134,22 @@ async def update_brain_entry(
     tags: list[str] | None = None,
     project: str | None = None,
     reextract: bool = False,
+    type: str | None = None,
+    topics: list[str] | None = None,
+    people: list[str] | None = None,
+    action_items: list[str] | None = None,
 ) -> str:
     """Edit an existing Open Brain entry. Get entry_id from search_brain or list_brain.
     Only the fields you pass are changed. Changing content re-embeds the entry and regenerates
     its type/topics/people/action items. tags replaces all tags. project="" removes the
     project. reextract=True re-runs metadata extraction without changing content (use it on
     entries whose metadata extraction failed).
+
+    The extracted metadata can be corrected by hand: type (decision, idea, meeting,
+    action_item, reference, question, reflection, other), topics, people, action_items.
+    Each list replaces the old one and [] clears it. Use this when the automatic labels are
+    wrong, e.g. a tool name listed under people. Hand-edited entries are marked metadata_status
+    "manual".
     """
     body: dict = {"reextract": reextract}
     if content is not None:
@@ -148,6 +158,11 @@ async def update_brain_entry(
         body["tags"] = tags
     if project is not None:
         body["project"] = project
+    for key, value in (
+        ("type", type), ("topics", topics), ("people", people), ("action_items", action_items),
+    ):
+        if value is not None:
+            body[key] = value
     async with httpx.AsyncClient(timeout=90.0) as client:
         resp = await client.patch(f"{BRAIN_API_URL}/entries/{entry_id}", json=body)
         if resp.status_code == 404:

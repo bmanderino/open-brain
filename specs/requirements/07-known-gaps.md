@@ -29,7 +29,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 
 | ID | Feature | Rationale |
 |----|---------|-----------|
-| FEAT-001 | ~~Edit entries / re-run metadata~~ **Done** via `PATCH /entries/{id}` and the `update_brain_entry` MCP tool (UI editing and hand-editing of metadata remain) | Fix bad LLM labels without delete + re-add. Entries with `metadata_status: failed` are the first candidates for a re-extract |
+| FEAT-001 | ~~Edit entries / re-run metadata~~ **Done** via `PATCH /entries/{id}` and the `update_brain_entry` MCP tool (hand-editing of metadata is included; UI editing remains) | Fix bad LLM labels without delete + re-add. Entries with `metadata_status: failed` are the first candidates for a re-extract |
 | FEAT-002 | Search filters (type, tag, source, person, date) in API, UI, and MCP | **Partly done:** API and MCP support project/type/tag/source/date filters; person/topic filters and UI controls remain |
 | FEAT-003 | Stats panel in web UI | `/stats` is only exposed to MCP today |
 | FEAT-004 | ~~Hybrid search (BM25 + vector)~~ **Done** (RRF of vector ranking and API-side BM25 over a full-text index) | Better recall for exact terms and names |

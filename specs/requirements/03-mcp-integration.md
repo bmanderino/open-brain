@@ -30,11 +30,12 @@
 - MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.
 
-### `update_brain_entry(entry_id, content=None, tags=None, project=None, reextract=False) -> str`
+### `update_brain_entry(entry_id, content=None, tags=None, project=None, reextract=False, type=None, topics=None, people=None, action_items=None) -> str`
 - MCP-060: Calls `PATCH /entries/{id}` (90 s timeout, since changed content re-runs the LLM).
 - MCP-061: Returns the updated entry's content, project, tags, and metadata; `"No entry with id <id>"` on 404; a note when metadata extraction failed.
 - MCP-062: `search_brain` and `list_brain` output includes each entry's id in brackets so it can be passed here.
-- MCP-063: The docstring states that only passed fields change, that `tags` replaces all tags, and that `project=""` removes the project.
+- MCP-063: The docstring states that only passed fields change, that `tags` replaces all tags, and that `project=""` removes the project, and that `type`, `topics`, `people`, and `action_items` correct the extracted metadata by hand (lists replace, `[]` clears; edited entries become `metadata_status: "manual"`).
+- MCP-064: Metadata arguments that are `None` are not sent; an empty list is sent so it can clear a field. Validation errors from the API (e.g. an invalid `type`) are returned as `Error updating entry: ...`.
 
 ### `list_brain(limit=10, project=None, type=None, tag=None) -> str`
 - MCP-030: Calls `GET /entries` with `limit` and any filters.

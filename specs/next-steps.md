@@ -64,7 +64,7 @@ Implemented without upgrading anything: a full-text index on `content`, BM25 com
 
 ### 6. ~~Edit, export, import (FEAT-001, FEAT-006)~~ Done
 
-**Progress:** Stage 1 (edit) is done: `PATCH /entries/{id}` with content/tags/project/reextract, the `update_brain_entry` MCP tool, and 404/422 handling on delete (GAP-009 API half). Stage 2 (`GET /export`, streamed JSONL without vectors) is done. Stage 3 (`POST /import`) is done too: re-embeds, keeps ids and dates, skips existing ids unless `overwrite=true`, reuses good metadata, and skips the dedup check. Verified by wiping the brain and restoring: the re-export was byte-identical.
+**Progress:** Stage 1 (edit) is done: `PATCH /entries/{id}` with content/tags/project/reextract (hand-editing of type/topics/people/action items was added afterwards), the `update_brain_entry` MCP tool, and 404/422 handling on delete (GAP-009 API half). Stage 2 (`GET /export`, streamed JSONL without vectors) is done. Stage 3 (`POST /import`) is done too: re-embeds, keeps ids and dates, skips existing ids unless `overwrite=true`, reuses good metadata, and skips the dedup check. Verified by wiping the brain and restoring: the re-export was byte-identical.
 
 **Why:** Data ownership is a stated goal (G5), but right now the only backup is a Docker volume snapshot, and a wrongly labeled entry can only be fixed by delete and re-add.
 

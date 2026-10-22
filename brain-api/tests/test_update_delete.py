@@ -62,6 +62,74 @@ def test_patch_reextract_repairs_failed_metadata(client, add, ollama):
     assert ollama.embed_calls == calls  # vector untouched
 
 
+# Hand-edited metadata
+
+def test_patch_metadata_fields_only_changes_those(client, add, ollama):
+    e = add("note")
+    calls = (ollama.embed_calls, ollama.extract_calls)
+    r = client.patch(f"/entries/{e['id']}", json={"people": ["Dana"], "type": "meeting"}).json()
+    assert r["people"] == ["Dana"] and r["type"] == "meeting"
+    assert r["topics"] == ["fake-topic"]  # untouched
+    assert r["metadata_status"] == "manual"
+    assert (ollama.embed_calls, ollama.extract_calls) == calls
+
+
+def test_patch_empty_list_clears_metadata_field(client, add):
+    e = add("note")
+    r = client.patch(f"/entries/{e['id']}", json={"topics": []}).json()
+    assert r["topics"] == []
+
+
+def test_patch_null_metadata_fields_are_ignored(client, add):
+    e = add("note")
+    r = client.patch(f"/entries/{e['id']}", json={"people": None, "type": None, "tags": ["x"]}).json()
+    assert r["type"] == "decision" and r["metadata_status"] == "ok"
+
+
+def test_patch_invalid_type_rejected(client, add):
+    e = add("note")
+    r = client.patch(f"/entries/{e['id']}", json={"type": "banana"})
+    assert r.status_code == 422
+    assert client.get("/entries").json()["entries"][0]["type"] == "decision"
+
+
+def test_patch_metadata_lists_get_placeholder_cleanup(client, add):
+    e = add("note")
+    r = client.patch(
+        f"/entries/{e['id']}", json={"people": ["None mentioned", " Dana "], "action_items": ["none"]}
+    ).json()
+    assert r["people"] == ["Dana"] and r["action_items"] == []
+
+
+def test_patch_manual_metadata_beats_extraction_in_same_request(client, add, ollama):
+    e = add("old text")
+    r = client.patch(
+        f"/entries/{e['id']}", json={"content": "new text", "people": ["Dana"]}
+    ).json()
+    assert r["people"] == ["Dana"]  # extraction returns people=[]; the hand edit wins
+    assert r["topics"] == ["fake-topic"]  # other fields come from the fresh extraction
+    assert r["metadata_status"] == "manual"
+    assert ollama.extract_calls == 2
+
+
+def test_patch_manual_edit_repairs_failed_entry(client, add, ollama):
+    ollama.extract_fails = True
+    e = add("note")
+    assert e["metadata_status"] == "failed"
+    r = client.patch(f"/entries/{e['id']}", json={"type": "idea", "topics": ["x"]}).json()
+    assert r["metadata_status"] == "manual" and r["type"] == "idea" and r["topics"] == ["x"]
+
+
+def test_manual_metadata_survives_export_import(client, add):
+    e = add("note")
+    client.patch(f"/entries/{e['id']}", json={"people": ["Dana"]})
+    lines = client.get("/export").text
+    client.delete(f"/entries/{e['id']}")
+    assert client.post("/import", content=lines).json()["reextracted"] == 0
+    got = client.get("/entries").json()["entries"][0]
+    assert got["people"] == ["Dana"] and got["metadata_status"] == "manual"
+
+
 def test_patch_empty_content_rejected(client, add):
     e = add("x")
     assert client.patch(f"/entries/{e['id']}", json={"content": " "}).status_code == 400

@@ -27,10 +27,10 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | META-002 | The extraction prompt MUST request: `type`, `topics[]`, `people[]`, `action_items[]`. | ✅ |
 | META-003 | Valid `type` values: `decision, idea, meeting, action_item, reference, question, reflection, other`. Any other value MUST be coerced to `other`. | ✅ |
 | META-004 | Extraction MUST NOT fail ingest. On any error (HTTP failure, timeout, invalid JSON) the API MUST log and fall back to `Metadata()` (`type=other`, empty lists) and record `metadata_status: "failed"`. The LLM call times out after `METADATA_TIMEOUT` seconds (default 60). | ✅ |
-| META-005 | Extracted metadata MUST be persisted in the point payload as top-level keys `type, topics, people, action_items`, plus `metadata_status` (`"ok"` or `"failed"`). The ingest response, `/entries`, and duplicate responses include `metadata_status` (`null` for entries stored before the field existed). | ✅ |
+| META-005 | Extracted metadata MUST be persisted in the point payload as top-level keys `type, topics, people, action_items`, plus `metadata_status` (`"ok"`, `"failed"`, or `"manual"` once a user has hand-edited the metadata, UPD-006). The ingest response, `/entries`, and duplicate responses include `metadata_status` (`null` for entries stored before the field existed). | ✅ |
 | META-008 | List fields MUST be cleaned: a bare string becomes a one-item list, and placeholder values are dropped: exact `none`, `n/a`, `na`, `null`, `nil`, `unknown`, empty, and phrases that begin with a whole-word `none`, `no one/people/name(s)/topic(s)/action(s)/action item(s)`, or `not mentioned/applicable/specified/available` (so `None mentioned` goes, while `Nonetheless Inc` and `Nilsson` stay). | ✅ |
 | META-006 | User content is interpolated into the prompt via `str.format`; content containing literal `{`/`}` is safe because only the template is formatted, but prompt-injection by content is possible and MUST be treated as untrusted. | ⚠️ |
-| META-007 | Users SHOULD be able to override or edit extracted metadata. | ❌ |
+| META-007 | Users SHOULD be able to override or edit extracted metadata. Done through `PATCH /entries/{id}` (UPD-006); there is no web UI for it. | ✅ |
 
 ## 3. Delete
 
@@ -75,9 +75,11 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, reextract?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
+| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, reextract?, type?, topics?, people?, action_items?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
 | UPD-002 | Changing `content` MUST re-embed the entry and re-run metadata extraction (concurrently), replacing the vector and the type/topics/people/action_items/metadata_status. `id`, `created_at`, and `source` are preserved. Empty content returns 400. | ✅ |
 | UPD-003 | `tags` replaces the whole list. `project` set to `null` or `""` removes the project key (the entry becomes unscoped). | ✅ |
 | UPD-004 | `reextract: true` MUST re-run metadata extraction without changing content or the vector, so entries with `metadata_status: failed` can be repaired. | ✅ |
 | UPD-005 | Missing id returns 404 and a malformed id returns 422. Updates do not run the duplicate check. | ✅ |
-| UPD-006 | Editing `type`, `topics`, `people`, or `action_items` by hand is not supported; use `reextract`. | ❌ |
+| UPD-006 | `type`, `topics`, `people`, and `action_items` MAY be hand-edited. A list replaces the old one and `[]` clears it; `null` or an omitted field changes nothing. Lists get the same placeholder cleanup as extracted metadata (META-008). An invalid `type` returns HTTP 422 listing the valid values (extraction, by contrast, silently coerces to `other`). | ✅ |
+| UPD-007 | Any hand-edited metadata field sets `metadata_status` to `"manual"`, including on an entry that had `failed`. The status is not `"failed"`, so import reuses the metadata without calling the LLM (IMP-004). | ✅ |
+| UPD-008 | If one request both triggers extraction (content change or `reextract`) and hand-edits fields, the hand edits win for those fields and the remaining fields come from the extraction. A later `reextract` overwrites manual edits. | ✅ |
