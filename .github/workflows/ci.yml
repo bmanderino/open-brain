@@ -30,6 +30,20 @@ jobs:
       - run: pytest
         working-directory: brain-api
 
+  mcp-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: mcp-server/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+        working-directory: mcp-server
+      - run: pytest
+        working-directory: mcp-server
+
   web-ui:
     runs-on: ubuntu-latest
     steps:

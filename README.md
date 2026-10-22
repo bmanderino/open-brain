@@ -259,7 +259,11 @@ pytest
 ```
 
 They cover ordering and paging, filters, dedup, hybrid search, metadata failures, edit/delete,
-export/import, and health. The MCP server and web UI have no tests yet.
+export/import, and health.
+
+The MCP server has its own tests (`mcp-server/`, same commands, needs Python 3.10+). They call the
+tools with the HTTP layer faked and check the requests sent to the Brain API and the text returned
+to Claude. The web UI has no tests yet.
 
 Lint with [ruff](https://docs.astral.sh/ruff/) (installed by `requirements-dev.txt`; config in
 `ruff.toml`) from the repo root:
@@ -269,7 +273,7 @@ ruff check .
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests:
-ruff, the API tests (Python 3.12), a web UI production build, and `docker compose config`
+ruff, the API tests and MCP server tests (Python 3.12), a web UI production build, and `docker compose config`
 to validate the compose file.
 
 ---
