@@ -63,7 +63,7 @@
 | ID | Requirement | Status |
 |----|-------------|--------|
 | NFR-020 | The system is designed for localhost / trusted-network use only. | By design |
-| NFR-021 | CORS MUST be limited to the configured `CORS_ORIGINS` (default `http://localhost:5173`, `http://127.0.0.1:5173`), allowing only GET/POST/DELETE and the `Content-Type` header. | ✅ |
+| NFR-021 | CORS MUST be limited to the configured `CORS_ORIGINS` (default `http://localhost:5173`, `http://127.0.0.1:5173`), allowing only GET/POST/PATCH/DELETE and the `Content-Type` header. | ✅ |
 | NFR-021a | There is still no authentication on the Brain API, MCP server, or Qdrant. Auth MUST be added before any non-local exposure. | ⚠️ |
 | NFR-022 | All published ports MUST bind to `127.0.0.1` only. To expose on a LAN, change the mapping and set `CORS_ORIGINS` accordingly. | ✅ |
 | NFR-023 | Content passed to the LLM is untrusted (prompt injection can only influence metadata fields, which are validated/coerced). | ✅ |

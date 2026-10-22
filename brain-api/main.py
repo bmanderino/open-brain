@@ -15,6 +15,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
     PointStruct,
+    PointVectors,
     VectorParams,
     Filter,
     FieldCondition,
@@ -59,7 +60,7 @@ app = FastAPI(title="Open Brain API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -135,6 +136,14 @@ class IngestRequest(BaseModel):
     tags: Optional[list[str]] = []
     project: Optional[str] = None
     force: bool = False  # skip the near-duplicate check
+
+
+class UpdateRequest(BaseModel):
+    """Only fields that are sent are changed. project: null or "" clears it."""
+    content: Optional[str] = None
+    tags: Optional[list[str]] = None
+    project: Optional[str] = None
+    reextract: bool = False  # re-run metadata extraction without changing content
 
 
 class IngestResponse(BaseModel):
@@ -247,6 +256,40 @@ async def extract_metadata(content: str) -> tuple[Metadata, str]:
     except Exception as e:
         print(f"[metadata] extraction failed ({type(e).__name__}): {e}")
         return Metadata(), "failed"
+
+
+def entry_dict(entry_id, payload: dict) -> dict:
+    """Flat entry shape returned by /entries and PATCH /entries/{id}."""
+    return {
+        "id": str(entry_id),
+        "content": payload["content"],
+        "source": payload.get("source", "unknown"),
+        "tags": payload.get("tags", []),
+        "project": payload.get("project"),
+        "created_at": payload.get("created_at", ""),
+        "type": payload.get("type", "other"),
+        "topics": payload.get("topics", []),
+        "people": payload.get("people", []),
+        "action_items": payload.get("action_items", []),
+        "metadata_status": payload.get("metadata_status"),
+    }
+
+
+def get_point(entry_id: str, with_vectors: bool = False):
+    """Fetch one point or raise 422 (malformed id) / 404 (missing)."""
+    try:
+        uuid.UUID(entry_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="entry id must be a UUID")
+    found = qdrant.retrieve(
+        collection_name=COLLECTION,
+        ids=[entry_id],
+        with_payload=True,
+        with_vectors=with_vectors,
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return found[0]
 
 
 def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
@@ -563,28 +606,69 @@ async def list_entries(
         with_payload=True,
         with_vectors=False,
     )
-    entries = [
-        {
-            "id": str(r.id),
-            "content": r.payload["content"],
-            "source": r.payload.get("source", "unknown"),
-            "tags": r.payload.get("tags", []),
-            "project": r.payload.get("project"),
-            "created_at": r.payload.get("created_at", ""),
-            "type": r.payload.get("type", "other"),
-            "topics": r.payload.get("topics", []),
-            "people": r.payload.get("people", []),
-            "action_items": r.payload.get("action_items", []),
-            "metadata_status": r.payload.get("metadata_status"),
-        }
-        for r in results
-    ]
+    entries = [entry_dict(r.id, r.payload) for r in results]
     next_before = entries[-1]["created_at"] if len(entries) == limit else None
     return {"entries": entries, "count": len(entries), "next_before": next_before}
 
 
+@app.patch("/entries/{entry_id}")
+async def update_entry(entry_id: str, req: UpdateRequest):
+    """Edit content, tags, or project. Changing content re-embeds and re-extracts
+    metadata; reextract=true re-runs extraction alone (e.g. for metadata_status failed)."""
+    point = get_point(entry_id)
+    payload: dict = {}
+    clear: list[str] = []
+
+    if "tags" in req.model_fields_set and req.tags is not None:
+        payload["tags"] = req.tags
+    if "project" in req.model_fields_set:
+        project = req.project.strip() if req.project else ""
+        if project:
+            payload["project"] = project
+        elif "project" in point.payload:
+            clear.append("project")
+
+    content = point.payload["content"]
+    content_changed = req.content is not None and req.content != content
+    if req.content is not None and not req.content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    new_vector = None
+    if content_changed or req.reextract:
+        new_content = req.content if content_changed else content
+        if content_changed:
+            (new_vector, (metadata, status)) = await asyncio.gather(
+                get_embedding(new_content), extract_metadata(new_content)
+            )
+            payload["content"] = new_content
+        else:
+            metadata, status = await extract_metadata(new_content)
+        payload.update(
+            {
+                "type": metadata.type,
+                "topics": metadata.topics,
+                "people": metadata.people,
+                "action_items": metadata.action_items,
+                "metadata_status": status,
+            }
+        )
+
+    if new_vector is not None:
+        qdrant.update_vectors(
+            collection_name=COLLECTION,
+            points=[PointVectors(id=entry_id, vector=new_vector)],
+        )
+    if payload:
+        qdrant.set_payload(collection_name=COLLECTION, payload=payload, points=[entry_id])
+    if clear:
+        qdrant.delete_payload(collection_name=COLLECTION, keys=clear, points=[entry_id])
+
+    return entry_dict(entry_id, get_point(entry_id).payload)
+
+
 @app.delete("/entries/{entry_id}")
 async def delete_entry(entry_id: str):
+    get_point(entry_id)  # 422 for a malformed id, 404 if missing
     qdrant.delete(
         collection_name=COLLECTION,
         points_selector=[entry_id],

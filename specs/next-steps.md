@@ -64,6 +64,8 @@ Implemented without upgrading anything: a full-text index on `content`, BM25 com
 
 ### 6. Edit, export, import (FEAT-001, FEAT-006)
 
+**Progress:** Stage 1 (edit) is done: `PATCH /entries/{id}` with content/tags/project/reextract, the `update_brain_entry` MCP tool, and 404/422 handling on delete (GAP-009 API half). Stage 2 (`GET /export`) and stage 3 (`POST /import`) remain.
+
 **Why:** Data ownership is a stated goal (G5), but right now the only backup is a Docker volume snapshot, and a wrongly labeled entry can only be fixed by delete and re-add.
 
 **Suggested approach:** `PATCH /entries/{id}` that updates content/tags/project and optionally re-runs embedding and metadata. A `GET /export` that streams JSONL (id, content, source, tags, project, created_at, metadata, no vectors), and an `/import` that re-embeds. Re-embedding on import keeps the export model-agnostic. Also expose an update tool over MCP so Claude can correct entries.

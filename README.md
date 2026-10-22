@@ -139,6 +139,7 @@ Once connected, Claude Code can:
 - **`search_brain`** — semantic search over everything you've stored; optional `project`, `type`, `tag`, `source` filters
 - **`add_to_brain`** — store thoughts/decisions during a session; optional `tags` and `project`
 - **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag` filters
+- **`update_brain_entry`** — fix an entry's content, tags, or project, or re-run metadata extraction
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
 Claude cannot delete entries; use the web UI for that.
@@ -208,6 +209,15 @@ curl -X POST http://localhost:8000/search \
 curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
   -d '{"query": "linting", "project": "open-brain", "type": "decision"}'
+```
+
+**Edit an entry** (only the fields you send change; changing `content` re-embeds it and
+regenerates its metadata; `project: ""` removes the project; `"reextract": true` re-runs metadata
+extraction alone, e.g. for entries marked `metadata_status: failed`):
+```bash
+curl -X PATCH http://localhost:8000/entries/<id> \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["decision"], "project": "open-brain"}'
 ```
 
 **List recent entries** (newest first, `limit` 1–100). Accepts `project`, `include_unscoped`,

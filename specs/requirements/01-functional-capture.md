@@ -39,13 +39,18 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 | ID | Requirement | Status |
 |----|-------------|--------|
 | DEL-001 | The API MUST delete the point with the given id from the collection and return `{"deleted": "<id>"}`. | ✅ |
-| DEL-002 | Deleting a non-existent id currently returns 200 (Qdrant delete is idempotent). The API SHOULD return 404. | ⚠️ |
+| DEL-002 | Deleting a non-existent id MUST return 404. | ✅ |
 | DEL-003 | Deletion is permanent; there is no soft-delete or undo. | ✅ (by design) |
-| DEL-004 | An invalid (non-UUID) id SHOULD return a 4xx; currently surfaces as an unhandled Qdrant error (500). | ⚠️ |
+| DEL-004 | A malformed (non-UUID) id MUST return 422. | ✅ |
 | DEL-005 | The MCP server does not expose delete. This is intentional to prevent accidental AI deletion. | ✅ |
 
 ## 4. Update
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| UPD-001 | Editing an existing entry (content, tags, metadata) is not supported. Users delete and re-ingest. | ❌ (non-goal) |
+| UPD-001 | The API MUST support `PATCH /entries/{id}` with `{content?, tags?, project?, reextract?}`; only fields that are sent change, and the response is the full updated entry in the flat `/entries` shape. | ✅ |
+| UPD-002 | Changing `content` MUST re-embed the entry and re-run metadata extraction (concurrently), replacing the vector and the type/topics/people/action_items/metadata_status. `id`, `created_at`, and `source` are preserved. Empty content returns 400. | ✅ |
+| UPD-003 | `tags` replaces the whole list. `project` set to `null` or `""` removes the project key (the entry becomes unscoped). | ✅ |
+| UPD-004 | `reextract: true` MUST re-run metadata extraction without changing content or the vector, so entries with `metadata_status: failed` can be repaired. | ✅ |
+| UPD-005 | Missing id returns 404 and a malformed id returns 422. Updates do not run the duplicate check. | ✅ |
+| UPD-006 | Editing `type`, `topics`, `people`, or `action_items` by hand is not supported; use `reextract`. | ❌ |

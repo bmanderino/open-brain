@@ -52,7 +52,7 @@ async def search_brain(
             date = r.get("created_at", "")[:10] if r.get("created_at") else "unknown"
             proj = f" | project: {r['project']}" if r.get("project") else ""
             kw = " | exact-term match" if r.get("match") in ("keyword", "both") else ""
-            lines.append(f"{i}. (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{tags})")
+            lines.append(f"{i}. [{r['id']}] (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{tags})")
             lines.append(f"   {r['content']}")
 
             meta = r.get("metadata", {})
@@ -127,6 +127,52 @@ async def add_to_brain(
 
 
 @mcp.tool()
+async def update_brain_entry(
+    entry_id: str,
+    content: str | None = None,
+    tags: list[str] | None = None,
+    project: str | None = None,
+    reextract: bool = False,
+) -> str:
+    """Edit an existing Open Brain entry. Get entry_id from search_brain or list_brain.
+    Only the fields you pass are changed. Changing content re-embeds the entry and regenerates
+    its type/topics/people/action items. tags replaces all tags. project="" removes the
+    project. reextract=True re-runs metadata extraction without changing content (use it on
+    entries whose metadata extraction failed).
+    """
+    body: dict = {"reextract": reextract}
+    if content is not None:
+        body["content"] = content
+    if tags is not None:
+        body["tags"] = tags
+    if project is not None:
+        body["project"] = project
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        resp = await client.patch(f"{BRAIN_API_URL}/entries/{entry_id}", json=body)
+        if resp.status_code == 404:
+            return f"No entry with id {entry_id}"
+        if resp.status_code != 200:
+            return f"Error updating entry: {resp.text}"
+        e = resp.json()
+        parts = [f"Updated entry {e['id']}", f"\"{e['content']}\""]
+        if e.get("project"):
+            parts.append(f"Project: {e['project']}")
+        if e.get("tags"):
+            parts.append(f"Tags: {', '.join(e['tags'])}")
+        if e.get("type") and e["type"] != "other":
+            parts.append(f"Type: {e['type']}")
+        if e.get("topics"):
+            parts.append(f"Topics: {', '.join(e['topics'])}")
+        if e.get("people"):
+            parts.append(f"People: {', '.join(e['people'])}")
+        if e.get("action_items"):
+            parts.append(f"Action items: {'; '.join(e['action_items'])}")
+        if e.get("metadata_status") == "failed":
+            parts.append("Note: metadata extraction failed; try reextract=True later.")
+        return "\n".join(parts)
+
+
+@mcp.tool()
 async def list_brain(
     limit: int = 10,
     project: str | None = None,
@@ -161,7 +207,7 @@ async def list_brain(
             tags = f" [{', '.join(e['tags'])}]" if e.get("tags") else ""
             date = e.get("created_at", "")[:10] if e.get("created_at") else "unknown"
             proj = f" | project: {e['project']}" if e.get("project") else ""
-            lines.append(f"{i}. ({date} | {e['source']}{proj}{tags})")
+            lines.append(f"{i}. [{e['id']}] ({date} | {e['source']}{proj}{tags})")
             lines.append(f"   {e['content']}")
 
             meta_type = e.get("type", "other")

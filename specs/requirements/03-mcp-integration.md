@@ -10,7 +10,7 @@
 | MCP-002 | The server MUST use the streamable-http transport. | ✅ |
 | MCP-003 | Tool failures from the Brain API (non-200) MUST be returned as human-readable error strings (`"Error …: <body>"`) rather than raising. | ✅ |
 | MCP-004 | Network-level errors (connection refused, timeout) are not caught and propagate as MCP tool errors. They SHOULD be caught and reported as strings. | ⚠️ |
-| MCP-005 | The server MUST NOT expose delete or update operations. | ✅ |
+| MCP-005 | The server MUST NOT expose a delete operation. It exposes `update_brain_entry` for edits. | ✅ |
 | MCP-006 | The server has no authentication; any process able to reach port 3001 can read/write the brain. | ⚠️ |
 
 ## 2. Tools
@@ -29,6 +29,12 @@
 - MCP-024: When the API reports `duplicate_of`, the tool MUST say nothing was stored, show the existing entry's id, similarity and content, and mention `force=True`. The docstring explains this to the model.
 - MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.
+
+### `update_brain_entry(entry_id, content=None, tags=None, project=None, reextract=False) -> str`
+- MCP-060: Calls `PATCH /entries/{id}` (90 s timeout, since changed content re-runs the LLM).
+- MCP-061: Returns the updated entry's content, project, tags, and metadata; `"No entry with id <id>"` on 404; a note when metadata extraction failed.
+- MCP-062: `search_brain` and `list_brain` output includes each entry's id in brackets so it can be passed here.
+- MCP-063: The docstring states that only passed fields change, that `tags` replaces all tags, and that `project=""` removes the project.
 
 ### `list_brain(limit=10, project=None, type=None, tag=None) -> str`
 - MCP-030: Calls `GET /entries` with `limit` and any filters.

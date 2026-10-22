@@ -14,7 +14,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | GAP-006 | P2 | ~~NVIDIA `deploy` block removed in working tree but README says GPU is pre-configured.~~ **Resolved:** README documents the NVIDIA `deploy` block as an opt-in snippet. | `git diff docker-compose.yml` | Use a `docker-compose.nvidia.yml` override and update README. |
 | GAP-007 | P2 | ~~README/compose call MCP server "Node.js"; it's Python.~~ **Resolved:** README and compose comment corrected. | compose comment | Fix comment. |
 | GAP-008 | P2 | ~~README setup omits pulling `llama3.2`; without it metadata extraction silently falls back to `other`.~~ **Resolved:** README now documents pulling `llama3.2` and the fallback behavior. | README step 3 | Add pull step; surface extraction failure (flag in response). |
-| GAP-009 | P2 | `DELETE` returns 200 for missing ids and 500 for malformed ids; UI deletes without confirmation or error handling. | `delete_entry`, `deleteEntry` | Validate id, return 404, add confirm + error toast. |
+| GAP-009 | P2 | `DELETE` returns 200 for missing ids and 500 for malformed ids; UI deletes without confirmation or error handling. **API half resolved:** DELETE now returns 404 for missing and 422 for malformed ids; the UI still deletes without confirmation or error handling. | `delete_entry`, `deleteEntry` | Validate id, return 404, add confirm + error toast. |
 | GAP-010 | P2 | Web UI and API swallow errors (all ingest errors say "could not reach Brain API"; search errors appear as "no results"). | `App.jsx` | Distinguish network/HTTP/empty states. |
 | GAP-011 | P2 | `/health` does not check Qdrant or Ollama. | `main.py` | Add dependency probes. |
 | GAP-012 | P2 | `limit` unvalidated on `/search` (`/entries` is now validated, 1–100). | `main.py` | Pydantic `Field(ge=1, le=100)`. |
@@ -29,7 +29,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 
 | ID | Feature | Rationale |
 |----|---------|-----------|
-| FEAT-001 | Edit entries / re-run metadata | Fix bad LLM labels without delete + re-add. Entries with `metadata_status: failed` are the first candidates for a re-extract |
+| FEAT-001 | ~~Edit entries / re-run metadata~~ **Done** via `PATCH /entries/{id}` and the `update_brain_entry` MCP tool (UI editing and hand-editing of metadata remain) | Fix bad LLM labels without delete + re-add. Entries with `metadata_status: failed` are the first candidates for a re-extract |
 | FEAT-002 | Search filters (type, tag, source, person, date) in API, UI, and MCP | **Partly done:** API and MCP support project/type/tag/source/date filters; person/topic filters and UI controls remain |
 | FEAT-003 | Stats panel in web UI | `/stats` is only exposed to MCP today |
 | FEAT-004 | ~~Hybrid search (BM25 + vector)~~ **Done** (RRF of vector ranking and API-side BM25 over a full-text index) | Better recall for exact terms and names |
