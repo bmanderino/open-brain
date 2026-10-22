@@ -8,7 +8,7 @@ from typing import Optional
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -21,6 +21,8 @@ from qdrant_client.models import (
     OrderBy,
     Direction,
     DatetimeRange,
+    IsEmptyCondition,
+    PayloadField,
 )
 
 # Config
@@ -74,6 +76,12 @@ async def startup():
         field_name="created_at",
         field_schema=PayloadSchemaType.DATETIME,
     )
+    for field in ("project", "type", "source", "tags"):
+        qdrant.create_payload_index(
+            collection_name=COLLECTION,
+            field_name=field,
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
 
 
 # Models
@@ -95,6 +103,7 @@ class IngestRequest(BaseModel):
     content: str
     source: Optional[str] = "manual"
     tags: Optional[list[str]] = []
+    project: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
@@ -102,14 +111,21 @@ class IngestResponse(BaseModel):
     content: str
     source: str
     tags: list[str]
+    project: Optional[str] = None
     created_at: str
     metadata: Metadata
 
 
 class SearchRequest(BaseModel):
     query: str
-    limit: Optional[int] = 5
+    limit: Optional[int] = Field(5, ge=1, le=100)
     source_filter: Optional[str] = None
+    project: Optional[str] = None
+    include_unscoped: bool = True
+    type: Optional[str] = None
+    tag: Optional[str] = None
+    created_after: Optional[str] = None
+    created_before: Optional[str] = None
 
 
 class SearchResult(BaseModel):
@@ -117,6 +133,7 @@ class SearchResult(BaseModel):
     content: str
     source: str
     tags: list[str]
+    project: Optional[str] = None
     created_at: str
     score: float
     metadata: Metadata
@@ -194,6 +211,50 @@ async def extract_metadata(content: str) -> Metadata:
         return Metadata()
 
 
+def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"{name} must be an ISO 8601 timestamp")
+    return value
+
+
+def build_filter(
+    project: Optional[str] = None,
+    include_unscoped: bool = True,
+    type: Optional[str] = None,
+    tag: Optional[str] = None,
+    source: Optional[str] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
+) -> Optional[Filter]:
+    """AND together whichever filters were given. A project filter also matches
+    entries with no project (unscoped) unless include_unscoped is false."""
+    must = []
+    if project:
+        match = FieldCondition(key="project", match=MatchValue(value=project))
+        if include_unscoped:
+            unscoped = IsEmptyCondition(is_empty=PayloadField(key="project"))
+            must.append(Filter(should=[match, unscoped]))
+        else:
+            must.append(match)
+    if type:
+        must.append(FieldCondition(key="type", match=MatchValue(value=type)))
+    if tag:
+        must.append(FieldCondition(key="tags", match=MatchValue(value=tag)))
+    if source:
+        must.append(FieldCondition(key="source", match=MatchValue(value=source)))
+    after = parse_timestamp(created_after, "created_after")
+    before = parse_timestamp(created_before, "created_before")
+    if after or before:
+        must.append(
+            FieldCondition(key="created_at", range=DatetimeRange(gt=after, lt=before))
+        )
+    return Filter(must=must) if must else None
+
+
 # Routes
 
 @app.get("/health")
@@ -207,6 +268,9 @@ async def ingest(req: IngestRequest):
         raise HTTPException(status_code=400, detail="Content cannot be empty")
 
     # Run embedding and metadata extraction concurrently
+    tags = req.tags or []
+    project = req.project.strip() if req.project and req.project.strip() else None
+
     embedding, metadata = await asyncio.gather(
         get_embedding(req.content),
         extract_metadata(req.content),
@@ -224,7 +288,8 @@ async def ingest(req: IngestRequest):
                 payload={
                     "content": req.content,
                     "source": req.source,
-                    "tags": req.tags,
+                    "tags": tags,
+                    **({"project": project} if project else {}),
                     "created_at": created_at,
                     "type": metadata.type,
                     "topics": metadata.topics,
@@ -239,7 +304,8 @@ async def ingest(req: IngestRequest):
         id=entry_id,
         content=req.content,
         source=req.source,
-        tags=req.tags,
+        tags=tags,
+        project=project,
         created_at=created_at,
         metadata=metadata,
     )
@@ -252,11 +318,15 @@ async def search(req: SearchRequest):
 
     embedding = await get_embedding(req.query)
 
-    query_filter = None
-    if req.source_filter:
-        query_filter = Filter(
-            must=[FieldCondition(key="source", match=MatchValue(value=req.source_filter))]
-        )
+    query_filter = build_filter(
+        project=req.project,
+        include_unscoped=req.include_unscoped,
+        type=req.type,
+        tag=req.tag,
+        source=req.source_filter,
+        created_after=req.created_after,
+        created_before=req.created_before,
+    )
 
     hits = qdrant.search(
         collection_name=COLLECTION,
@@ -272,6 +342,7 @@ async def search(req: SearchRequest):
             content=hit.payload["content"],
             source=hit.payload.get("source", "unknown"),
             tags=hit.payload.get("tags", []),
+            project=hit.payload.get("project"),
             created_at=hit.payload.get("created_at", ""),
             score=hit.score,
             metadata=Metadata(
@@ -291,17 +362,23 @@ async def search(req: SearchRequest):
 async def list_entries(
     limit: int = Query(20, ge=1, le=100),
     before: Optional[str] = None,
+    after: Optional[str] = None,
+    project: Optional[str] = None,
+    include_unscoped: bool = True,
+    type: Optional[str] = None,
+    tag: Optional[str] = None,
+    source: Optional[str] = None,
 ):
     """Newest-first. Page by passing the previous response's next_before as before."""
-    query_filter = None
-    if before:
-        try:
-            datetime.fromisoformat(before)
-        except ValueError:
-            raise HTTPException(status_code=422, detail="before must be an ISO 8601 timestamp")
-        query_filter = Filter(
-            must=[FieldCondition(key="created_at", range=DatetimeRange(lt=before))]
-        )
+    query_filter = build_filter(
+        project=project,
+        include_unscoped=include_unscoped,
+        type=type,
+        tag=tag,
+        source=source,
+        created_after=after,
+        created_before=before,
+    )
     results, _ = qdrant.scroll(
         collection_name=COLLECTION,
         scroll_filter=query_filter,
@@ -316,6 +393,7 @@ async def list_entries(
             "content": r.payload["content"],
             "source": r.payload.get("source", "unknown"),
             "tags": r.payload.get("tags", []),
+            "project": r.payload.get("project"),
             "created_at": r.payload.get("created_at", ""),
             "type": r.payload.get("type", "other"),
             "topics": r.payload.get("topics", []),

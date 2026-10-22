@@ -15,22 +15,23 @@
 
 ## 2. Tools
 
-### `search_brain(query: str, limit: int = 5) -> str`
+### `search_brain(query, limit=5, project=None, type=None, tag=None, source=None) -> str`
 - MCP-010: Calls `POST /search` (30 s timeout).
 - MCP-011: Returns `"No results found for: '<query>'"` on empty results.
-- MCP-012: Otherwise returns a numbered text list: score (3 dp), date (YYYY-MM-DD), source, tags, content, then `type` (omitted if `other`), `topics`, `people`, `actions` lines when present.
-- MCP-013: Does not expose `source_filter`.
+- MCP-012: Otherwise returns a numbered text list: score (3 dp), date (YYYY-MM-DD), source, project (when set), tags, content, then `type` (omitted if `other`), `topics`, `people`, `actions` lines when present.
+- MCP-013: Exposes `project`, `type`, `tag`, and `source` filters (`source` maps to the API's `source_filter`). The docstring tells the model that `project` also returns unscoped entries.
 
-### `add_to_brain(content: str, tags: list[str] = []) -> str`
+### `add_to_brain(content, tags=None, project=None) -> str`
 - MCP-020: Calls `POST /ingest` with `source="mcp"` (60 s timeout to allow for LLM extraction).
-- MCP-021: Returns a confirmation containing the new id, the stored content, tags, and extracted type/topics/people/action items when present.
+- MCP-021: Returns a confirmation containing the new id, the stored content, tags, project (when set), and extracted type/topics/people/action items when present.
+- MCP-023: The docstring tells the model to pass `project` (the current repo name) for project-specific content and omit it for general knowledge.
 - MCP-022: The tool description SHOULD steer the model to use this tool for the brain (not its own memory); README notes users must be explicit.
 
-### `list_brain(limit: int = 10) -> str`
-- MCP-030: Calls `GET /entries?limit=N`.
+### `list_brain(limit=10, project=None, type=None, tag=None) -> str`
+- MCP-030: Calls `GET /entries` with `limit` and any filters.
 - MCP-031: Returns `"Your brain is empty. Add something with add_to_brain!"` when empty.
-- MCP-032: Output shows date, source, tags, content, type, topics, people (action items are omitted, unlike search).
-- MCP-033: Inherits the "recent" ordering bug (LIST-006).
+- MCP-032: Output shows date, source, project (when set), tags, content, type, topics, people (action items are omitted, unlike search).
+- MCP-033: Returns the true newest entries (LIST-006 fixed).
 
 ### `brain_stats() -> str`
 - MCP-040: Calls `GET /stats`.

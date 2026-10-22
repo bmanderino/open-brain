@@ -22,7 +22,9 @@ Implemented with a `created_at` datetime index, `order_by` desc, and a `before`/
 
 **Done when:** With 50+ entries, `list_brain(limit=10)` returns the 10 newest, and paging through returns the rest in order with no repeats.
 
-### 2. Project namespace and search filters (FEAT-009, FEAT-002)
+### 2. ~~Project namespace and search filters (FEAT-009, FEAT-002)~~ Done
+
+Implemented: optional `project` field, keyword indexes, shared filter builder for `/search` and `/entries`, MCP exposure, and README docs. Searching with a project also returns unscoped entries (`include_unscoped=false` to opt out). Still open: person/topic filters and web UI filter controls.
 
 **Why:** This is the biggest improvement for real Claude Code use. Every MCP write currently gets `source="mcp"` with nothing identifying the project, so context from different repos mixes together in search results. Claude also can't narrow a search by type, tag, or person even though that metadata is already stored. `source_filter` exists in the API but isn't exposed through MCP.
 
@@ -63,9 +65,7 @@ Implemented with a `created_at` datetime index, `order_by` desc, and a `before`/
 ## Small fixes to fold in along the way
 
 - `delete_entry` should validate the id and return 404 for missing entries instead of 200 (GAP-009).
-- Validate `limit` on `/search` and `/entries` with `Field(ge=1, le=100)` (GAP-012).
-- Replace the mutable default `tags: list[str] = []` in the MCP tool signatures with `None` (GAP-014).
-- Normalize `tags=None` to `[]` on ingest (GAP-015).
+- ~~Validate `limit` on `/search` and `/entries`~~ done (GAP-012), as were GAP-014 and GAP-015.
 - `/health` should probe Qdrant and Ollama (GAP-011).
 - `/stats` scrolls the entire collection on every call. Fine at this size, but cache it or compute incrementally if the brain grows into the thousands.
 

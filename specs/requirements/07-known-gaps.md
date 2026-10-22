@@ -19,8 +19,8 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | GAP-011 | P2 | `/health` does not check Qdrant or Ollama. | `main.py` | Add dependency probes. |
 | GAP-012 | P2 | `limit` unvalidated on `/search` (`/entries` is now validated, 1–100). | `main.py` | Pydantic `Field(ge=1, le=100)`. |
 | GAP-013 | P3 | Deprecated APIs: `@app.on_event("startup")` (FastAPI lifespan), `qdrant.search` (use `query_points`). | `main.py` | Migrate when upgrading dependencies. |
-| GAP-014 | P3 | Mutable default args (`tags: list[str] = []`) in MCP tool signatures. | `mcp-server.py` | Use `None` default. |
-| GAP-015 | P3 | `ingest` returns `req.tags` that may be `None` if client sends `null`; typed `list[str]`. | `main.py` | Normalize to `[]`. |
+| GAP-014 | P3 | ~~Mutable default args (`tags: list[str] = []`) in MCP tool signatures.~~ **Resolved** | `mcp-server.py` | Done. |
+| GAP-015 | P3 | ~~`ingest` returns `req.tags` that may be `None` if client sends `null`; typed `list[str]`.~~ **Resolved** | `main.py` | Done. |
 | GAP-016 | P3 | Inconsistent response shapes (`metadata` nested vs flat). | See DATA-010 | Unify under `metadata`. |
 | GAP-017 | P3 | Non-standard fixed fonts referenced but may not be loaded; no responsive layout. | `App.jsx` CSS | Verify `index.html` font links; add breakpoints. |
 | GAP-018 | P3 | No tests, CI, or lint. | repo | Add pytest for API (mock Ollama/Qdrant) and a smoke test script. |
@@ -30,11 +30,11 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | ID | Feature | Rationale |
 |----|---------|-----------|
 | FEAT-001 | Edit entries / re-run metadata | Fix bad LLM labels without delete + re-add |
-| FEAT-002 | Search filters (type, tag, source, person, date) in API, UI, and MCP | Narrow results; `source_filter` exists only in the API |
+| FEAT-002 | Search filters (type, tag, source, person, date) in API, UI, and MCP | **Partly done:** API and MCP support project/type/tag/source/date filters; person/topic filters and UI controls remain |
 | FEAT-003 | Stats panel in web UI | `/stats` is only exposed to MCP today |
 | FEAT-004 | Hybrid search (BM25 + vector) | Better recall for exact terms and names |
 | FEAT-005 | Chunking for long content | Embedding model context limit |
 | FEAT-006 | Export / import / backup | Data ownership; currently only Docker volume snapshots |
 | FEAT-007 | Optional API key / auth | Needed for any non-local use |
 | FEAT-008 | Action-item view across all entries | Metadata already captured, not surfaced as a task list |
-| FEAT-009 | MCP `source`/project namespace per project | Avoid cross-project context bleed in Claude Code |
+| FEAT-009 | ~~MCP `source`/project namespace per project~~ **Done** (optional `project` field, unscoped entries included in project searches) | Avoid cross-project context bleed in Claude Code |

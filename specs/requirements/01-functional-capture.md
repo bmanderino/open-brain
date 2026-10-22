@@ -8,13 +8,13 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| CAP-001 | The API MUST accept JSON `{content: string, source?: string, tags?: string[]}`. `source` defaults to `"manual"`, `tags` to `[]`. | ✅ |
+| CAP-001 | The API MUST accept JSON `{content: string, source?: string, tags?: string[], project?: string}`. `source` defaults to `"manual"`, `tags` to `[]` (a `null` is normalized to `[]`). `project` is optional; blank values are treated as absent and the key is not stored. | ✅ |
 | CAP-002 | The API MUST reject empty or whitespace-only `content` with HTTP 400 `"Content cannot be empty"`. | ✅ |
 | CAP-003 | The API MUST generate a UUIDv4 `id` and a UTC ISO-8601 `created_at` timestamp server-side. | ✅ |
 | CAP-004 | The API MUST generate an embedding of `content` via Ollama and store it as the point vector. | ✅ |
 | CAP-005 | Embedding and metadata extraction MUST run concurrently (`asyncio.gather`). | ✅ |
 | CAP-006 | If embedding fails (non-200 from Ollama), the API MUST return HTTP 502 with the Ollama error and MUST NOT store a partial entry. | ✅ |
-| CAP-007 | The response MUST return `id, content, source, tags, created_at, metadata`. | ✅ |
+| CAP-007 | The response MUST return `id, content, source, tags, project, created_at, metadata` (`project` is `null` when unscoped). | ✅ |
 | CAP-008 | `source` SHOULD identify the origin surface. Current values: `web-ui`, `mcp`, `cli` (user-supplied), `manual` (default). | ✅ |
 | CAP-009 | The API SHOULD enforce a maximum content length or chunk long content to fit the embedding model's context window. | ❌ |
 | CAP-010 | The API MAY de-duplicate identical or near-identical content. | ❌ |

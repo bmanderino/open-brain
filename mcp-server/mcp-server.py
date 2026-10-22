@@ -9,16 +9,33 @@ mcp = FastMCP("open-brain", host="0.0.0.0", port=port)
 
 
 @mcp.tool()
-async def search_brain(query: str, limit: int = 5) -> str:
+async def search_brain(
+    query: str,
+    limit: int = 5,
+    project: str | None = None,
+    type: str | None = None,
+    tag: str | None = None,
+    source: str | None = None,
+) -> str:
     """Search your personal Open Brain knowledge base using semantic search.
     Use this to recall past thoughts, decisions, notes, or anything stored.
     Phrase the query naturally, e.g. 'RPG game architecture decisions' or 'why I chose FastAPI'.
+
+    Optional filters: project (the current repo/project name; also returns entries not tied
+    to any project, such as general preferences), type (decision, idea, meeting, action_item,
+    reference, question, reflection, other), tag (exact tag), source (e.g. 'mcp', 'web-ui').
     """
+    body = {"query": query, "limit": limit}
+    if project:
+        body["project"] = project
+    if type:
+        body["type"] = type
+    if tag:
+        body["tag"] = tag
+    if source:
+        body["source_filter"] = source
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{BRAIN_API_URL}/search",
-            json={"query": query, "limit": limit},
-        )
+        resp = await client.post(f"{BRAIN_API_URL}/search", json=body)
         if resp.status_code != 200:
             return f"Error searching brain: {resp.text}"
 
@@ -32,7 +49,8 @@ async def search_brain(query: str, limit: int = 5) -> str:
         for i, r in enumerate(results, 1):
             tags = f" [{', '.join(r['tags'])}]" if r.get("tags") else ""
             date = r.get("created_at", "")[:10] if r.get("created_at") else "unknown"
-            lines.append(f"{i}. (score: {r['score']:.3f} | {date} | via {r['source']}{tags})")
+            proj = f" | project: {r['project']}" if r.get("project") else ""
+            lines.append(f"{i}. (score: {r['score']:.3f} | {date} | via {r['source']}{proj}{tags})")
             lines.append(f"   {r['content']}")
 
             meta = r.get("metadata", {})
@@ -50,20 +68,31 @@ async def search_brain(query: str, limit: int = 5) -> str:
 
 
 @mcp.tool()
-async def add_to_brain(content: str, tags: list[str] = []) -> str:
+async def add_to_brain(
+    content: str,
+    tags: list[str] | None = None,
+    project: str | None = None,
+) -> str:
     """Store a thought, decision, note, or piece of information into the Open Brain knowledge base.
     Use this to save things worth remembering -- architectural decisions, ideas, things learned, etc.
+
+    Pass project (the current repo/project name) for anything specific to one project, so it
+    doesn't surface in other projects' searches. Omit it for general preferences or knowledge
+    that applies everywhere.
     """
+    tags = tags or []
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             f"{BRAIN_API_URL}/ingest",
-            json={"content": content, "tags": tags, "source": "mcp"},
+            json={"content": content, "tags": tags, "source": "mcp", "project": project},
         )
         if resp.status_code != 200:
             return f"Error storing in brain: {resp.text}"
 
         data = resp.json()
         tag_str = f"\nTags: {', '.join(tags)}" if tags else ""
+        if data.get("project"):
+            tag_str += f"\nProject: {data['project']}"
 
         meta = data.get("metadata", {})
         meta_parts = []
@@ -81,10 +110,26 @@ async def add_to_brain(content: str, tags: list[str] = []) -> str:
 
 
 @mcp.tool()
-async def list_brain(limit: int = 10) -> str:
-    """List the most recent entries in the Open Brain knowledge base."""
+async def list_brain(
+    limit: int = 10,
+    project: str | None = None,
+    type: str | None = None,
+    tag: str | None = None,
+) -> str:
+    """List the most recent entries in the Open Brain knowledge base, newest first.
+    Optional filters: project (also includes entries not tied to any project),
+    type (decision, idea, meeting, action_item, reference, question, reflection, other),
+    tag (exact tag).
+    """
+    params = {"limit": limit}
+    if project:
+        params["project"] = project
+    if type:
+        params["type"] = type
+    if tag:
+        params["tag"] = tag
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(f"{BRAIN_API_URL}/entries?limit={limit}")
+        resp = await client.get(f"{BRAIN_API_URL}/entries", params=params)
         if resp.status_code != 200:
             return f"Error listing brain: {resp.text}"
 
@@ -98,7 +143,8 @@ async def list_brain(limit: int = 10) -> str:
         for i, e in enumerate(entries, 1):
             tags = f" [{', '.join(e['tags'])}]" if e.get("tags") else ""
             date = e.get("created_at", "")[:10] if e.get("created_at") else "unknown"
-            lines.append(f"{i}. ({date} | {e['source']}{tags})")
+            proj = f" | project: {e['project']}" if e.get("project") else ""
+            lines.append(f"{i}. ({date} | {e['source']}{proj}{tags})")
             lines.append(f"   {e['content']}")
 
             meta_type = e.get("type", "other")

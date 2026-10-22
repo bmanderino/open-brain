@@ -134,9 +134,9 @@ the UI from a different URL, set `CORS_ORIGINS` (comma-separated) on `brain-api`
 
 Once connected, Claude Code can:
 
-- **`search_brain`** — semantic search over everything you've stored
-- **`add_to_brain`** — store thoughts/decisions during a session
-- **`list_brain`** — see recent entries
+- **`search_brain`** — semantic search over everything you've stored; optional `project`, `type`, `tag`, `source` filters
+- **`add_to_brain`** — store thoughts/decisions during a session; optional `tags` and `project`
+- **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag` filters
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
 Claude cannot delete entries; use the web UI for that.
@@ -145,6 +145,14 @@ Example prompts in Claude Code:
 - "Search my brain for anything about the RPG game architecture"
 - "Add to my brain that I decided to use Qdrant over Pinecone because of the Docker-native setup"
 - "Before we start, check my brain for any context on this project"
+
+### Projects
+
+Entries can be tagged with a `project` (for example the repo name) so context from different
+repos doesn't mix. Searching or listing with a `project` returns that project's entries **plus
+entries with no project**, so general preferences and decisions still apply everywhere. Entries
+saved before this feature have no project and are treated the same way. Tell Claude to pass the
+repo name as `project` when adding (or put it in your `CLAUDE.md`).
 
 Note: It helps to be specific when asking Claude to add context to the brain as, otherwise, it can default to its own memory.
 
@@ -167,6 +175,31 @@ curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
   -d '{"query": "what did I decide about X", "limit": 5}'
 ```
+
+**Filters** (all optional, combined with AND):
+
+| Field | Meaning |
+|-------|---------|
+| `project` | This project's entries plus unscoped ones; set `"include_unscoped": false` for this project only |
+| `type` | `decision`, `idea`, `meeting`, `action_item`, `reference`, `question`, `reflection`, `other` |
+| `tag` | Exact tag |
+| `source_filter` | Exact source, e.g. `mcp` |
+| `created_after`, `created_before` | ISO 8601 timestamps |
+
+```bash
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "linting", "project": "open-brain", "type": "decision"}'
+```
+
+**List recent entries** (newest first, `limit` 1–100). Accepts `project`, `include_unscoped`,
+`type`, `tag`, `source`, `after`, and `before`. To page, pass the previous response's
+`next_before` as `before`; it is `null` on the last page:
+```bash
+curl "http://localhost:8000/entries?limit=10&project=open-brain"
+```
+
+`POST /ingest` also accepts an optional `"project"` field.
 
 ---
 
