@@ -491,6 +491,15 @@ const css = `
   }
 `
 
+// The API's error text for a failed response, or a bare status when there is none.
+async function errorDetail(r) {
+  try {
+    const d = await r.json()
+    if (typeof d.detail === 'string') return d.detail
+  } catch {}
+  return `HTTP ${r.status}`
+}
+
 export default function App() {
   const [content, setContent] = useState('')
   const [tagInput, setTagInput] = useState('')
@@ -501,9 +510,11 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState(null)
+  const [searchError, setSearchError] = useState(null)
 
   const [entries, setEntries] = useState([])
   const [online, setOnline] = useState(false)
+  const [loadError, setLoadError] = useState(null)
 
   useEffect(() => {
     fetch(`${API}/health`)
@@ -515,9 +526,13 @@ export default function App() {
   async function loadEntries() {
     try {
       const r = await fetch(`${API}/entries?limit=30`)
+      if (!r.ok) throw new Error(await errorDetail(r))
       const d = await r.json()
       setEntries(d.entries || [])
-    } catch {}
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err instanceof TypeError ? 'could not reach Brain API' : err.message)
+    }
   }
 
   function addTag(e) {
@@ -543,20 +558,28 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, tags, source: 'web-ui' }),
       })
-      if (!r.ok) throw new Error('Failed')
+      if (!r.ok) throw new Error(await errorDetail(r))
       const d = await r.json()
+      if (d.duplicate_of) {
+        setFeedback({ type: 'err', msg: '= not stored: a near-duplicate entry already exists' })
+        setContent('')
+        setTags([])
+        return
+      }
       const typeLabel = d.metadata?.type && d.metadata.type !== 'other'
         ? ` [${d.metadata.type.replace('_', ' ')}]`
         : ''
       const topicsLabel = d.metadata?.topics?.length
         ? ` — ${d.metadata.topics.join(', ')}`
         : ''
-      setFeedback({ type: 'ok', msg: `-> stored in brain${typeLabel}${topicsLabel}` })
+      const metaNote = d.metadata_status === 'failed' ? ' (metadata extraction failed)' : ''
+      setFeedback({ type: 'ok', msg: `-> stored in brain${typeLabel}${topicsLabel}${metaNote}` })
       setContent('')
       setTags([])
       loadEntries()
-    } catch {
-      setFeedback({ type: 'err', msg: 'x could not reach Brain API' })
+    } catch (err) {
+      const msg = err instanceof TypeError ? 'could not reach Brain API' : err.message
+      setFeedback({ type: 'err', msg: `x ${msg}` })
     } finally {
       setIngesting(false)
     }
@@ -566,16 +589,18 @@ export default function App() {
     if (!query.trim()) return
     setSearching(true)
     setResults(null)
+    setSearchError(null)
     try {
       const r = await fetch(`${API}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, limit: 8 }),
       })
+      if (!r.ok) throw new Error(await errorDetail(r))
       const d = await r.json()
       setResults(d.results || [])
-    } catch {
-      setResults([])
+    } catch (err) {
+      setSearchError(err instanceof TypeError ? 'could not reach Brain API' : err.message)
     } finally {
       setSearching(false)
     }
@@ -591,10 +616,18 @@ export default function App() {
 
   async function deleteEntry(id, e) {
     e.stopPropagation()
+    const entry = entries.find(x => x.id === id)
+    const preview = entry ? entry.content.slice(0, 80) : ''
+    if (!window.confirm(`Delete this entry permanently?\n\n${preview}`)) return
     try {
-      await fetch(`${API}/entries/${id}`, { method: 'DELETE' })
+      const r = await fetch(`${API}/entries/${id}`, { method: 'DELETE' })
+      // 404 means it is already gone, which is what the user wanted
+      if (!r.ok && r.status !== 404) throw new Error(await errorDetail(r))
       setEntries(prev => prev.filter(x => x.id !== id))
-    } catch {}
+    } catch (err) {
+      const msg = err instanceof TypeError ? 'could not reach Brain API' : err.message
+      setFeedback({ type: 'err', msg: `x could not delete: ${msg}` })
+    }
   }
 
   function formatDate(iso) {
@@ -658,7 +691,12 @@ export default function App() {
             </div>
 
             <div className="entries-list">
-              {entries.length === 0 && (
+              {loadError && (
+                <div className="feedback err" style={{ textAlign: 'center', marginTop: 20 }}>
+                  x could not load entries: {loadError}
+                </div>
+              )}
+              {entries.length === 0 && !loadError && (
                 <div style={{ color: 'var(--text-dim)', fontSize: 11, textAlign: 'center', marginTop: 20 }}>
                   nothing stored yet
                 </div>
@@ -704,7 +742,15 @@ export default function App() {
             </div>
 
             <div className="results-area">
-              {!results && !searching && (
+              {searchError && (
+                <div className="empty-state">
+                  <div className="empty-glyph">&#9888;</div>
+                  <div className="empty-label">search failed</div>
+                  <div className="empty-sub">{searchError}</div>
+                </div>
+              )}
+
+              {!results && !searching && !searchError && (
                 <div className="empty-state">
                   <div className="empty-glyph">&#9678;</div>
                   <div className="empty-label">semantic search</div>
