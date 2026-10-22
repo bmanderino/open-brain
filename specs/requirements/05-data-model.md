@@ -40,6 +40,7 @@
 - DATA-010: Ingest and search responses nest LLM output under `metadata`; `/entries` returns it flat at the top level. Consumers (UI, MCP) handle each shape separately. Unifying is a possible future cleanup.
 - DATA-011: Embeddings are never returned to clients.
 - DATA-012: Content is stored and embedded as one unit; no chunking.
+- DATA-015: A full-text index on `content` (word tokenizer, lowercase, min token length 2) is created idempotently at startup to support keyword search.
 - DATA-014: Keyword payload indexes on `project`, `type`, `source`, and `tags` are created idempotently at startup to support filters.
 - DATA-013: `created_at` has a datetime payload index, created idempotently at API startup, used for `order_by` in `/entries`.
 

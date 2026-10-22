@@ -148,6 +148,13 @@ Example prompts in Claude Code:
 - "Add to my brain that I decided to use Qdrant over Pinecone because of the Docker-native setup"
 - "Before we start, check my brain for any context on this project"
 
+### Search
+
+Searches are hybrid: semantic similarity plus exact-term matching (names, identifiers, error
+strings, library names), merged by reciprocal rank fusion. Each result's `score` is the
+cosine similarity to the query, and `match` (`semantic`, `keyword`, or `both`) shows how it was
+found. Send `"mode": "semantic"` to `/search` for vector-only results.
+
 ### Duplicates
 
 `add_to_brain` and `POST /ingest` skip near-duplicates: if an existing entry in the same project

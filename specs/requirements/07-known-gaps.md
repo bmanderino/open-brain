@@ -18,7 +18,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | GAP-010 | P2 | Web UI and API swallow errors (all ingest errors say "could not reach Brain API"; search errors appear as "no results"). | `App.jsx` | Distinguish network/HTTP/empty states. |
 | GAP-011 | P2 | `/health` does not check Qdrant or Ollama. | `main.py` | Add dependency probes. |
 | GAP-012 | P2 | `limit` unvalidated on `/search` (`/entries` is now validated, 1–100). | `main.py` | Pydantic `Field(ge=1, le=100)`. |
-| GAP-013 | P3 | Deprecated APIs: `@app.on_event("startup")` (FastAPI lifespan), `qdrant.search` (use `query_points`). | `main.py` | Migrate when upgrading dependencies. |
+| GAP-013 | P3 | Deprecated APIs: `@app.on_event("startup")` (FastAPI lifespan), `qdrant.search` (use `query_points`). **Partly resolved:** `qdrant.search` replaced by `query_points`; `on_event` remains. | `main.py` | Migrate `on_event` to lifespan. |
 | GAP-014 | P3 | ~~Mutable default args (`tags: list[str] = []`) in MCP tool signatures.~~ **Resolved** | `mcp-server.py` | Done. |
 | GAP-015 | P3 | ~~`ingest` returns `req.tags` that may be `None` if client sends `null`; typed `list[str]`.~~ **Resolved** | `main.py` | Done. |
 | GAP-016 | P3 | Inconsistent response shapes (`metadata` nested vs flat). | See DATA-010 | Unify under `metadata`. |
@@ -32,7 +32,7 @@ Findings from the retroactive review. Priorities: **P1** correctness/security, *
 | FEAT-001 | Edit entries / re-run metadata | Fix bad LLM labels without delete + re-add. Entries with `metadata_status: failed` are the first candidates for a re-extract |
 | FEAT-002 | Search filters (type, tag, source, person, date) in API, UI, and MCP | **Partly done:** API and MCP support project/type/tag/source/date filters; person/topic filters and UI controls remain |
 | FEAT-003 | Stats panel in web UI | `/stats` is only exposed to MCP today |
-| FEAT-004 | Hybrid search (BM25 + vector) | Better recall for exact terms and names |
+| FEAT-004 | ~~Hybrid search (BM25 + vector)~~ **Done** (RRF of vector ranking and API-side BM25 over a full-text index) | Better recall for exact terms and names |
 | FEAT-005 | Chunking for long content | Embedding model context limit |
 | FEAT-006 | Export / import / backup | Data ownership; currently only Docker volume snapshots |
 | FEAT-007 | Optional API key / auth | Needed for any non-local use |

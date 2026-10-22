@@ -19,6 +19,7 @@
 - MCP-010: Calls `POST /search` (30 s timeout).
 - MCP-011: Returns `"No results found for: '<query>'"` on empty results.
 - MCP-012: Otherwise returns a numbered text list: score (3 dp), date (YYYY-MM-DD), source, project (when set), tags, content, then `type` (omitted if `other`), `topics`, `people`, `actions` lines when present.
+- MCP-014: Search is hybrid; results found through exact-term matching are labeled `exact-term match` in the output, and the docstring says names, identifiers and error strings are matched.
 - MCP-013: Exposes `project`, `type`, `tag`, and `source` filters (`source` maps to the API's `source_filter`). The docstring tells the model that `project` also returns unscoped entries.
 
 ### `add_to_brain(content, tags=None, project=None, force=False) -> str`

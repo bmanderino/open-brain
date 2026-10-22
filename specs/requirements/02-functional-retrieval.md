@@ -6,10 +6,12 @@
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| SRCH-001 | The API MUST accept `{query: string, limit?: int, source_filter?: string, project?: string, include_unscoped?: bool, type?: string, tag?: string, created_after?: string, created_before?: string}`. `limit` defaults to 5 and is validated 1–100. | ✅ |
+| SRCH-001 | The API MUST accept `{query: string, limit?: int, source_filter?: string, project?: string, include_unscoped?: bool, type?: string, tag?: string, created_after?: string, created_before?: string, mode?: "hybrid"|"semantic"}`. `mode` defaults to `hybrid`. `limit` defaults to 5 and is validated 1–100. | ✅ |
 | SRCH-002 | Empty/whitespace `query` MUST return HTTP 400 `"Query cannot be empty"`. | ✅ |
 | SRCH-003 | The query MUST be embedded with the same model as ingest and searched by cosine similarity. | ✅ |
-| SRCH-004 | Results MUST be ordered by descending score and each include `id, content, source, tags, project, created_at, score, metadata{type,topics,people,action_items}`. | ✅ |
+| SRCH-013 | In `hybrid` mode (default) the API MUST also run an exact-term search and merge it with the vector ranking by reciprocal rank fusion (k=60). Startup creates a full-text (word tokenizer, lowercase, min token length 2) index on `content`. Keyword candidates are points containing any non-stopword query term, ranked by BM25 computed in the API, because Qdrant 1.11 has no built-in BM25. Filters apply to both rankings. `semantic` mode returns the vector ranking only. | ✅ |
+| SRCH-004 | Results MUST be ordered by descending score and each include `id, content, source, tags, project, created_at, score, match, metadata{type,topics,people,action_items}`. Order is by descending score in `semantic` mode and by fused rank in `hybrid` mode. | ✅ |
+| SRCH-014 | `score` MUST always be the cosine similarity between the query and the entry (also for entries found only by keyword), so it means the same in both modes. `match` is `semantic`, `keyword`, or `both`, saying which rankings contained the entry. | ✅ |
 | SRCH-005 | If `source_filter` is set, results MUST be restricted to entries whose `source` exactly matches. | ✅ |
 | SRCH-006 | Response MUST echo the original `query`. | ✅ |
 | SRCH-007 | Missing payload fields MUST get defaults (`source="unknown"`, `tags=[]`, `type="other"`, etc.) so legacy entries do not break search. | ✅ |
@@ -17,7 +19,7 @@
 | SRCH-009 | Search SHOULD support filtering by tags, type, topics, people, and date range. `tag`, `type`, and `created_after`/`created_before` are supported; `topics` and `people` are not. | ⚠️ |
 | SRCH-012 | `project` filtering MUST match entries with that project and, unless `include_unscoped` is false (default true), entries with no `project`. All supplied filters are ANDed. Malformed timestamps return HTTP 422. | ✅ |
 | SRCH-010 | Search SHOULD support a minimum score threshold. | ❌ |
-| SRCH-011 | Search uses `qdrant.search`, deprecated in newer qdrant-client versions in favor of `query_points`. | ⚠️ |
+| SRCH-011 | Search uses `query_points` (the deprecated `qdrant.search` is no longer used). | ✅ |
 
 ## 2. List Recent Entries
 

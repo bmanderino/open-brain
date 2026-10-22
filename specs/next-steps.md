@@ -54,7 +54,9 @@ Implemented: `metadata_status` (`ok`/`failed`) stored and returned, `METADATA_TI
 
 **Suggested approach:** Add a `metadata_status` field (`ok` / `failed`) to the ingest response and stored payload. Raise the timeout (or make it an env var). Show a note in the `add_to_brain` MCP output when extraction failed. Optionally add a re-extract path (see FEAT-001 below) so failed entries can be repaired later.
 
-### 5. Hybrid search (FEAT-004)
+### 5. ~~Hybrid search (FEAT-004)~~ Done
+
+Implemented without upgrading anything: a full-text index on `content`, BM25 computed in the API over the keyword candidates, and reciprocal rank fusion with the vector results. `qdrant.search` was replaced by `query_points`, so GAP-013 is only partly open (`on_event` remains). The vector-only mode is `mode=semantic`.
 
 **Why:** Pure semantic search is weak on exact terms: names, identifiers, error strings, library names. Those make up much of what a dev knowledge base holds.
 
