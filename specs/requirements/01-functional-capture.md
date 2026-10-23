@@ -96,7 +96,7 @@ A pinned entry is a short, lasting fact that every session should see without se
 | PIN-004 | `GET /entries` MUST accept `pinned=true` to list only pinned entries. A `pinned` boolean payload index is created idempotently at startup. | ✅ |
 | PIN-005 | Pinning does not affect dedup (a near-duplicate of an existing entry is still not stored, and the duplicate response shows whether the existing entry is pinned). The MCP tool tells the model to pin the existing entry instead. | ✅ |
 | PIN-006 | An unscoped pin (no `project`) is global: it appears in every project's context. A pin with a `project` appears only in that project's context. | ✅ |
-| PIN-007 | There is no web UI control for pinning yet; the UI neither shows nor sets `pinned`. | ❌ |
+| PIN-007 | The web UI MUST show a `pinned` badge and offer pin/unpin on recent entries and search results (UI-060). | ✅ |
 
 ### Supersession
 
@@ -110,4 +110,4 @@ A superseded entry has been replaced by a newer one (a decision that flipped). I
 | SUP-004 | `superseded_by` (null when absent) MUST be returned by search, `/entries`, `PATCH`, and `/export`, and accepted by `/import`. A keyword payload index on it is created idempotently at startup. | ✅ |
 | SUP-005 | `DELETE /entries/{id}` MUST clear `superseded_by` on every entry that pointed at the deleted one, so no entry stays hidden behind a replacement that no longer exists. | ✅ |
 | SUP-006 | `POST /ingest` MUST return `possibly_supersedes`: up to 3 entries from the same project scope (unscoped entries compare only with unscoped ones), not superseded, with similarity at least `NEIGHBOR_MIN_SCORE` (default 0.6) and, unless `force` is set, below the dedup threshold. Each has `id, content, project, pinned, created_at, score`. It shares one vector query with the duplicate check. Nothing is superseded automatically. | ✅ |
-| SUP-007 | The web UI neither shows nor sets `superseded_by` yet. | ❌ |
+| SUP-007 | The web UI MUST mark superseded entries, hide them by default, and let the user restore one or mark another outdated (UI-061, UI-063). | ✅ |

@@ -63,3 +63,16 @@
 | UI-054 | Each result card shows match percentage (`score × 100`) with a bar, type badge (hidden if `other`), full content (whitespace preserved), date, source, tags, topics, people, and an "action items" list when present. | ✅ |
 | UI-055 | A failed search (network or HTTP error) MUST show a "search failed" state with the reason, not "no results"; the error clears on the next search. | ✅ |
 | UI-056 | The UI has no filters (source/type/tag/date) and no way to view `/stats`. | ❌ |
+
+## 7. Pinning, Related Entries, Supersession
+
+Entry cards and search results share the actions below. Card actions appear on hover; on search results they are always visible. These were not run against a browser in CI (the UI has no tests, only a production build).
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| UI-060 | Pinned entries show a `pinned` badge. A `pin` / `unpin` action calls `PATCH /entries/{id}` with `pinned` and updates the entry everywhere it is displayed. A failure shows `x could not update: <reason>`. | ✅ |
+| UI-061 | Superseded entries show a `superseded` badge and are dimmed. By default they are not requested; a "show superseded" checkbox above the recent list sends `include_superseded` to `/entries`, `/search` and `/related`. Search results already on screen are not refreshed when the box is toggled. | ✅ |
+| UI-062 | A `related` action opens a panel at the top of the results area, from `GET /entries/{id}/related`, listing each neighbor with date, similarity percentage and badges. Clicking a neighbor opens its own related list. The panel shows a loading line, `nothing similar enough` when empty, and the error on failure, and has a close button. | ✅ |
+| UI-063 | After storing an entry whose ingest response has `possibly_supersedes`, the success message ends with `-- N similar, see right panel` and the panel opens titled `possibly replaces`. Each neighbor in the panel has an `outdated` action that supersedes it by the entry named in the panel header. A superseded entry offers `restore`, which clears `superseded_by`. An entry that becomes superseded leaves the lists unless superseded entries are shown. | ✅ |
+| UI-064 | The UI cannot choose an arbitrary replacement for an entry; `outdated` only works from a related or possibly-replaces panel. | ⚠️ |
+

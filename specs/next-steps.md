@@ -137,7 +137,7 @@ Decisions to make explicit:
 
 **Done when:** Superseding an entry hides it from default search, and the add response surfaces likely candidates to replace.
 
-**Status (2026-10-22):** Built as `PATCH superseded_by` plus the `supersede_brain_entry` tool (SUP-001..007), with `include_superseded` on search and list, exclusion from `get_context` and dedup, `possibly_supersedes` on ingest (up to 3 neighbors at or above `NEIGHBOR_MIN_SCORE`, 0.6, untuned), and export/import. Deleting a replacement restores what it replaced. Not done: web UI display (SUP-007). The index on `superseded_by` and the `IsEmpty` filter are only verified against local-mode Qdrant, so try it once against the real server.
+**Status (2026-10-22):** Built as `PATCH superseded_by` plus the `supersede_brain_entry` tool (SUP-001..007), with `include_superseded` on search and list, exclusion from `get_context` and dedup, `possibly_supersedes` on ingest (up to 3 neighbors at or above `NEIGHBOR_MIN_SCORE`, 0.6, untuned), and export/import. Deleting a replacement restores what it replaced. Web UI support was added afterwards (UI-060..064). The index on `superseded_by` and the `IsEmpty` filter are only verified against local-mode Qdrant, so try it once against the real server.
 
 ### 10. Related-entry links
 
@@ -147,7 +147,7 @@ Decisions to make explicit:
 
 If ingest-time neighbors are already returned for #9, reuse that lookup rather than adding another one.
 
-**Status (2026-10-22):** Built as `GET /entries/{id}/related` and the `related_to` tool (REL-001..006), scoped like `/context`, default floor `RELATED_MIN_SCORE` 0.5 (untuned). It shares the `Neighbor` shape with the ingest lookup but runs its own query, since it starts from a stored vector rather than a new embedding. Not done: web UI display (REL-006). Not yet tried against the real server.
+**Status (2026-10-22):** Built as `GET /entries/{id}/related` and the `related_to` tool (REL-001..006), scoped like `/context`, default floor `RELATED_MIN_SCORE` 0.5 (untuned). It shares the `Neighbor` shape with the ingest lookup but runs its own query, since it starts from a stored vector rather than a new embedding. Verified against the real server via the MCP tool (0.5 filters little in a single-topic brain). Web UI support was added afterwards (UI-062).
 
 ### 11. Open loops and review (deferred)
 

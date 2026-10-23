@@ -148,7 +148,8 @@ Once connected, Claude Code can:
 - **`supersede_brain_entry`** — mark an entry as replaced by a newer one so it stops appearing in searches
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
-Claude cannot delete entries; use the web UI for that.
+Claude cannot delete entries; use the web UI for that. The web UI can also pin and unpin entries,
+show related entries, mark an entry outdated, and restore superseded ones (see the sections below).
 
 Example prompts in Claude Code:
 - "Search my brain for anything about the RPG game architecture"
@@ -196,7 +197,7 @@ vector, so nothing is stored and there are no links to go stale or to export. De
 results (`limit`, 1-20) at a similarity of at least `RELATED_MIN_SCORE` (default `0.5`, an untuned
 guess; `min_score` overrides it per request). Scope follows `get_context`: an entry with a project sees
 that project plus unscoped entries, and an unscoped entry sees only unscoped ones. Superseded entries
-are hidden unless `include_superseded` is set. The web UI does not show related entries yet.
+are hidden unless `include_superseded` is set. The web UI has a "related" button on every entry.
 
 ### Projects
 

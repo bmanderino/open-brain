@@ -286,6 +286,91 @@ const css = `
   .entry-card:hover .entry-delete { opacity: 1; }
   .entry-delete:hover { color: var(--red) !important; }
 
+  .entry-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .act {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 0;
+    transition: opacity 0.15s, color 0.15s;
+  }
+
+  .act:hover { color: var(--accent); }
+  .entry-card .act { opacity: 0; }
+  .entry-card:hover .act { opacity: 1; }
+
+  .badge-pin, .badge-sup {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .badge-pin {
+    background: rgba(68, 255, 221, 0.08);
+    border: 1px solid rgba(68, 255, 221, 0.25);
+    color: var(--green);
+  }
+
+  .badge-sup {
+    background: rgba(255, 102, 68, 0.08);
+    border: 1px solid rgba(255, 102, 68, 0.25);
+    color: var(--red);
+  }
+
+  .superseded { opacity: 0.55; }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .related-panel {
+    border: 1px solid var(--border-hi);
+    border-radius: 6px;
+    background: var(--bg2);
+    padding: 12px 14px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .related-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: var(--accent2);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .related-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .related-item {
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .related-item .entry-content { color: var(--text-hi); }
+
   .entry-type {
     font-size: 9px;
     text-transform: uppercase;
@@ -515,17 +600,22 @@ export default function App() {
   const [entries, setEntries] = useState([])
   const [online, setOnline] = useState(false)
   const [loadError, setLoadError] = useState(null)
+  const [showSuperseded, setShowSuperseded] = useState(false)
+  const [related, setRelated] = useState(null)
 
   useEffect(() => {
     fetch(`${API}/health`)
       .then(r => r.ok ? setOnline(true) : setOnline(false))
       .catch(() => setOnline(false))
-    loadEntries()
   }, [])
+
+  useEffect(() => {
+    loadEntries()
+  }, [showSuperseded])
 
   async function loadEntries() {
     try {
-      const r = await fetch(`${API}/entries?limit=30`)
+      const r = await fetch(`${API}/entries?limit=30&include_superseded=${showSuperseded}`)
       if (!r.ok) throw new Error(await errorDetail(r))
       const d = await r.json()
       setEntries(d.entries || [])
@@ -573,7 +663,17 @@ export default function App() {
         ? ` — ${d.metadata.topics.join(', ')}`
         : ''
       const metaNote = d.metadata_status === 'failed' ? ' (metadata extraction failed)' : ''
-      setFeedback({ type: 'ok', msg: `-> stored in brain${typeLabel}${topicsLabel}${metaNote}` })
+      const similar = d.possibly_supersedes?.length
+        ? ` -- ${d.possibly_supersedes.length} similar, see right panel`
+        : ''
+      setFeedback({ type: 'ok', msg: `-> stored in brain${typeLabel}${topicsLabel}${metaNote}${similar}` })
+      if (d.possibly_supersedes?.length) {
+        setRelated({
+          entry: { id: d.id, content },
+          title: 'possibly replaces',
+          items: d.possibly_supersedes,
+        })
+      }
       setContent('')
       setTags([])
       loadEntries()
@@ -594,7 +694,7 @@ export default function App() {
       const r = await fetch(`${API}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, limit: 8 }),
+        body: JSON.stringify({ query, limit: 8, include_superseded: showSuperseded }),
       })
       if (!r.ok) throw new Error(await errorDetail(r))
       const d = await r.json()
@@ -628,6 +728,82 @@ export default function App() {
       const msg = err instanceof TypeError ? 'could not reach Brain API' : err.message
       setFeedback({ type: 'err', msg: `x could not delete: ${msg}` })
     }
+  }
+
+  const errorText = err => (err instanceof TypeError ? 'could not reach Brain API' : err.message)
+
+  async function patchEntry(id, body) {
+    try {
+      const r = await fetch(`${API}/entries/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) throw new Error(await errorDetail(r))
+      return await r.json()
+    } catch (err) {
+      setFeedback({ type: 'err', msg: `x could not update: ${errorText(err)}` })
+      return null
+    }
+  }
+
+  // Mirror a PATCH response into every list that shows the entry. An entry that just became
+  // superseded leaves the lists unless superseded entries are being shown.
+  function applyUpdate(u) {
+    const hide = !!u.superseded_by && !showSuperseded
+    const apply = list => list && (hide
+      ? list.filter(x => x.id !== u.id)
+      : list.map(x => x.id === u.id ? { ...x, pinned: u.pinned, superseded_by: u.superseded_by } : x))
+    setEntries(apply)
+    setResults(apply)
+    setRelated(prev => prev && { ...prev, items: apply(prev.items) })
+  }
+
+  async function togglePin(item, ev) {
+    ev.stopPropagation()
+    const u = await patchEntry(item.id, { pinned: !item.pinned })
+    if (u) applyUpdate(u)
+  }
+
+  async function setSuperseded(id, newId) {
+    const u = await patchEntry(id, { superseded_by: newId })
+    if (u) applyUpdate(u)
+  }
+
+  async function openRelated(item, ev) {
+    ev.stopPropagation()
+    const entry = { id: item.id, content: item.content }
+    setRelated({ entry, title: 'related to', items: [], loading: true })
+    const keep = update => setRelated(prev => (prev && prev.entry.id === entry.id ? { ...prev, ...update } : prev))
+    try {
+      const r = await fetch(`${API}/entries/${item.id}/related?include_superseded=${showSuperseded}`)
+      if (!r.ok) throw new Error(await errorDetail(r))
+      const d = await r.json()
+      keep({ items: d.related || [], loading: false })
+    } catch (err) {
+      keep({ items: [], loading: false, error: errorText(err) })
+    }
+  }
+
+  function itemBadges(item) {
+    return (
+      <>
+        {item.pinned && <span className="badge-pin">pinned</span>}
+        {item.superseded_by && <span className="badge-sup">superseded</span>}
+      </>
+    )
+  }
+
+  function itemActions(item) {
+    return (
+      <>
+        <button className="act" onClick={ev => togglePin(item, ev)}>{item.pinned ? 'unpin' : 'pin'}</button>
+        <button className="act" onClick={ev => openRelated(item, ev)}>related</button>
+        {item.superseded_by && (
+          <button className="act" onClick={ev => { ev.stopPropagation(); setSuperseded(item.id, '') }}>restore</button>
+        )}
+      </>
+    )
   }
 
   function formatDate(iso) {
@@ -688,6 +864,14 @@ export default function App() {
 
             <div className="panel-section" style={{ paddingBottom: 12 }}>
               <div className="section-label">recent</div>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={showSuperseded}
+                  onChange={e => setShowSuperseded(e.target.checked)}
+                />
+                show superseded
+              </label>
             </div>
 
             <div className="entries-list">
@@ -702,7 +886,7 @@ export default function App() {
                 </div>
               )}
               {entries.map(e => (
-                <div key={e.id} className="entry-card" onClick={() => {
+                <div key={e.id} className={`entry-card${e.superseded_by ? ' superseded' : ''}`} onClick={() => {
                   setQuery(e.content.slice(0, 60))
                   setResults(null)
                 }}>
@@ -710,13 +894,17 @@ export default function App() {
                   <div className="entry-meta">
                     <span className="entry-date">{formatDate(e.created_at)}</span>
                     <span className="entry-source">via {e.source}</span>
+                    {itemBadges(e)}
                     {e.type && e.type !== 'other' && (
                       <span className="entry-type">{e.type.replace('_', ' ')}</span>
                     )}
                     {e.tags?.map(t => (
                       <span key={t} className="entry-tag">#{t}</span>
                     ))}
-                    <button className="entry-delete" onClick={(ev) => deleteEntry(e.id, ev)} title="delete">✕</button>
+                    <span className="entry-actions">
+                      {itemActions(e)}
+                      <button className="entry-delete" onClick={(ev) => deleteEntry(e.id, ev)} title="delete">✕</button>
+                    </span>
                   </div>
                   {e.topics?.length > 0 && (
                     <div className="entry-topics">{e.topics.join(' · ')}</div>
@@ -742,6 +930,39 @@ export default function App() {
             </div>
 
             <div className="results-area">
+              {related && (
+                <div className="related-panel">
+                  <div className="related-head">
+                    <span>{related.title}: {related.entry.content.slice(0, 60)}</span>
+                    <button className="act" onClick={() => setRelated(null)} title="close">✕</button>
+                  </div>
+                  {related.loading && <div>finding similar entries...</div>}
+                  {related.error && <div style={{ color: 'var(--red)' }}>x {related.error}</div>}
+                  {!related.loading && !related.error && related.items.length === 0 && (
+                    <div>nothing similar enough</div>
+                  )}
+                  {related.items.map(n => (
+                    <div key={n.id} className="related-item" onClick={ev => openRelated(n, ev)}>
+                      <div className="entry-content">{n.content}</div>
+                      <div className="entry-meta">
+                        <span className="entry-date">{formatDate(n.created_at)}</span>
+                        <span>{(n.score * 100).toFixed(0)}% similar</span>
+                        {itemBadges(n)}
+                        <span className="entry-actions">
+                          <button
+                            className="act"
+                            title="mark this entry as replaced by the one above"
+                            onClick={ev => { ev.stopPropagation(); setSuperseded(n.id, related.entry.id) }}
+                          >
+                            outdated
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {searchError && (
                 <div className="empty-state">
                   <div className="empty-glyph">&#9888;</div>
@@ -778,7 +999,7 @@ export default function App() {
               )}
 
               {results?.map((r, i) => (
-                <div key={r.id} className="result-card" style={{ animationDelay: `${i * 0.04}s` }}>
+                <div key={r.id} className={`result-card${r.superseded_by ? ' superseded' : ''}`} style={{ animationDelay: `${i * 0.04}s` }}>
                   <div className="result-score">
                     <span>{(r.score * 100).toFixed(0)}% match</span>
                     <div className="score-bar">
@@ -793,12 +1014,14 @@ export default function App() {
                     <span>{formatDate(r.created_at)}</span>
                     <span>via {r.source}</span>
                     {r.tags?.map(t => <span key={t}>#{t}</span>)}
+                    {itemBadges(r)}
                     {r.metadata?.topics?.map(t => (
                       <span key={t} style={{ color: 'var(--accent)', opacity: 0.6 }}>{t}</span>
                     ))}
                     {r.metadata?.people?.map(p => (
                       <span key={p} style={{ color: 'var(--accent2)', opacity: 0.6 }}>{p}</span>
                     ))}
+                    <span className="entry-actions">{itemActions(r)}</span>
                   </div>
                   {r.metadata?.action_items?.length > 0 && (
                     <div className="result-actions">

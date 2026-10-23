@@ -82,4 +82,4 @@ What a session should know up front, in one small response. Built to be injected
 | REL-003 | Scope follows CTX-002: an entry with a project matches that project plus unscoped entries; an unscoped entry matches only unscoped entries. | ✅ |
 | REL-004 | Superseded entries are excluded unless `include_superseded=true` (SUP-003). | ✅ |
 | REL-005 | A malformed id returns 422 and a missing entry 404. | ✅ |
-| REL-006 | The web UI does not show related entries yet. | ❌ |
+| REL-006 | The web UI MUST offer a "related" action on entries and show the results (UI-062). | ✅ |
