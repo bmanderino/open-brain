@@ -42,7 +42,7 @@ def test_all_tools_registered_with_descriptions(run, tools):
     names = {t.name: t for t in listed}
     assert set(names) == {
         "search_brain", "add_to_brain", "update_brain_entry", "list_brain", "brain_stats",
-        "get_context", "supersede_brain_entry",
+        "get_context", "supersede_brain_entry", "related_to",
     }
     # Claude reads these descriptions to decide how to call the tools
     assert "project" in names["search_brain"].description
@@ -391,6 +391,26 @@ def test_superseded_results_are_marked(run, tools, api):
     assert f"| superseded by {OLD}" in run(tools.search_brain("q", include_superseded=True))
     api.reply("GET", "/entries", body={"entries": [entry(superseded_by=OLD)]})
     assert f"| superseded by {OLD}" in run(tools.list_brain(include_superseded=True))
+
+
+# related_to
+
+def test_related_formats_neighbors(run, tools, api):
+    near = {"id": OLD, "content": "Use Postgres", "project": "p", "pinned": True,
+            "created_at": "2026-03-01T00:00:00+00:00", "score": 0.7123}
+    api.reply("GET", f"/entries/{ID}/related", body={"id": ID, "related": [near]})
+    out = run(tools.related_to(ID, limit=3))
+    assert api.last_params() == {"limit": "3"}
+    assert f"[{OLD}] (similarity 0.712 | 2026-03-01 | project: p | pinned)" in out
+    assert "Use Postgres" in out
+
+
+def test_related_empty_missing_and_include_superseded(run, tools, api):
+    api.reply("GET", f"/entries/{ID}/related", body={"id": ID, "related": []})
+    assert run(tools.related_to(ID, include_superseded=True)) == f"No related entries found for {ID}."
+    assert api.last_params()["include_superseded"] == "true"
+    api.reply("GET", f"/entries/{ID}/related", status=404, body={"detail": "Entry not found"})
+    assert run(tools.related_to(ID)) == f"No entry with id {ID}"
 
 
 # get_context

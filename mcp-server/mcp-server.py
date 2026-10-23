@@ -269,6 +269,38 @@ async def supersede_brain_entry(old_id: str, new_id: str) -> str:
 
 
 @mcp.tool()
+async def related_to(entry_id: str, limit: int = 5, include_superseded: bool = False) -> str:
+    """Find entries similar to a given one, to see what else is stored around a topic or
+    decision. Get entry_id from search_brain or list_brain. Results are within the entry's own
+    project plus entries not tied to a project, closest first, with date and similarity. Nothing
+    is stored; it is computed when called. Superseded entries are hidden unless
+    include_superseded=True.
+    """
+    params: dict = {"limit": limit}
+    if include_superseded:
+        params["include_superseded"] = "true"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{BRAIN_API_URL}/entries/{entry_id}/related", params=params)
+        if resp.status_code == 404:
+            return f"No entry with id {entry_id}"
+        if resp.status_code != 200:
+            return f"Error finding related entries: {resp.text}"
+        related = resp.json().get("related", [])
+        if not related:
+            return f"No related entries found for {entry_id}."
+        lines = []
+        for i, n in enumerate(related, 1):
+            proj = f" | project: {n['project']}" if n.get("project") else ""
+            pin = " | pinned" if n.get("pinned") else ""
+            lines.append(
+                f"{i}. [{n['id']}] (similarity {n['score']:.3f} | {n['created_at'][:10]}{proj}{pin})"
+            )
+            lines.append(f"   {n['content']}")
+            lines.append("")
+        return f"Entries related to {entry_id}:\n\n" + "\n".join(lines)
+
+
+@mcp.tool()
 async def get_context(project: str | None = None, recent: int = 5) -> str:
     """Get the context worth knowing at the start of work: pinned entries first, then the most
     recent entries, for one project plus anything not tied to a project. Call this at the start

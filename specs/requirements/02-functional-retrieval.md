@@ -70,3 +70,16 @@ What a session should know up front, in one small response. Built to be injected
 | CTX-003 | The JSON form MUST be `{project, pinned[], pinned_total, recent[]}` with entries in the flat `/entries` shape. `pinned_total` counts all matching pins even when the list is capped. | ✅ |
 | CTX-004 | `format=text` MUST return compact `text/plain`: a title, a `Pinned:` and a `Recent:` section with one line per entry (date, project or `general`, whitespace collapsed, truncated to 800 characters), a note when pins were hidden by the cap, and a closing line telling the model to save with `add_to_brain` (with the project) and search for anything older. | ✅ |
 | CTX-005 | The text form is the only capture nudge available to hooks: as far as Claude Code documents, `SessionStart` (and `UserPromptSubmit`) stdout is added to the model's context, but `SessionEnd` output is not, so the saving reminder rides along with the context. See the README for what each hook event can and cannot do. | ✅ |
+
+## Related entries
+
+**Endpoint:** `GET /entries/{id}/related?limit=5&min_score=0.5&include_superseded=false`
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| REL-001 | The API MUST return `{id, related[]}` with the entries most similar to the given entry's own vector, closest first, each with `id, content, project, pinned, created_at, score` (cosine). The entry itself is never included. Nothing is stored, so there are no links to migrate, export or invalidate. | ✅ |
+| REL-002 | `limit` defaults to 5 (validated 1-20). Only entries scoring at least `min_score` (default `RELATED_MIN_SCORE`, 0.5, validated 0-1) are returned. | ✅ |
+| REL-003 | Scope follows CTX-002: an entry with a project matches that project plus unscoped entries; an unscoped entry matches only unscoped entries. | ✅ |
+| REL-004 | Superseded entries are excluded unless `include_superseded=true` (SUP-003). | ✅ |
+| REL-005 | A malformed id returns 422 and a missing entry 404. | ✅ |
+| REL-006 | The web UI does not show related entries yet. | ❌ |

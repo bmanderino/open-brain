@@ -147,6 +147,8 @@ Decisions to make explicit:
 
 If ingest-time neighbors are already returned for #9, reuse that lookup rather than adding another one.
 
+**Status (2026-10-22):** Built as `GET /entries/{id}/related` and the `related_to` tool (REL-001..006), scoped like `/context`, default floor `RELATED_MIN_SCORE` 0.5 (untuned). It shares the `Neighbor` shape with the ingest lookup but runs its own query, since it starts from a stored vector rather than a new embedding. Not done: web UI display (REL-006). Not yet tried against the real server.
+
 ### 11. Open loops and review (deferred)
 
 **Status:** Hold until #7 is in use and there's evidence that action items get read. This is the riskiest item in the round: it changes the shape of `action_items`, which touches the payload, import/export, the UI, and the metadata-edit path. The items also come from `llama3.2` extraction, so they're likely noisy, and a todo list built on noisy extraction tends to rot.

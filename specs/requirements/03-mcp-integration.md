@@ -52,6 +52,10 @@
 - MCP-080: Calls `PATCH /entries/{old_id}` with `{"superseded_by": new_id}`. The docstring says to store the new entry first, that the old one is hidden from search, list and context but kept, and that `new_id=""` restores it.
 - MCP-081: Confirms the supersession (or the restore). `"No entry with id <old_id>"` on 404; the API's reason (`Not superseded: ...`) on 422 (self, unknown target, cycle).
 
+### `related_to(entry_id, limit=5, include_superseded=False) -> str`
+- MCP-090: Calls `GET /entries/{id}/related` (30 s timeout); `include_superseded` is sent only when true.
+- MCP-091: Lists each neighbor with id, similarity, date, project (when set), `pinned` marker and content. `"No related entries found for <id>."` when empty, `"No entry with id <id>"` on 404.
+
 ### `get_context(project=None, recent=5) -> str`
 - MCP-070: Calls `GET /context?format=text` (30 s timeout) and returns the API's text unchanged (CTX-004).
 - MCP-071: `project` is sent only when given. Without it the API returns only unscoped entries.

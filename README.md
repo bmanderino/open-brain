@@ -143,6 +143,8 @@ Once connected, Claude Code can:
 - **`add_to_brain`** — store thoughts/decisions during a session; optional `tags`, `project`, and `pinned`
 - **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag`, `pinned` filters
 - **`update_brain_entry`** — fix an entry's content, tags, project, pinned state, or its extracted type/topics/people/action items, or re-run metadata extraction
+- **`related_to`** — entries similar to a given one, computed when called
+- **`related_to`** — entries similar to a given one, computed when called
 - **`supersede_brain_entry`** — mark an entry as replaced by a newer one so it stops appearing in searches
 - **`brain_stats`** — totals, entries by source, top topics, and top people
 
@@ -185,6 +187,16 @@ shows them as "Possibly replaces". Nothing is superseded automatically: a wrong 
 good entry, so the caller decides. Only entries scoring at least `NEIGHBOR_MIN_SCORE` (default `0.6`, set on
 `brain-api`) are listed; that default is a guess, not tuned on real entries. `superseded_by` is kept by
 `/export` and `/import`.
+
+### Related entries
+
+`related_to(entry_id)` (or `GET /entries/{id}/related`) returns the entries closest to a given one,
+most similar first, with date and similarity. It is computed on read from the entry's own
+vector, so nothing is stored and there are no links to go stale or to export. Defaults: up to 5
+results (`limit`, 1-20) at a similarity of at least `RELATED_MIN_SCORE` (default `0.5`, an untuned
+guess; `min_score` overrides it per request). Scope follows `get_context`: an entry with a project sees
+that project plus unscoped entries, and an unscoped entry sees only unscoped ones. Superseded entries
+are hidden unless `include_superseded` is set. The web UI does not show related entries yet.
 
 ### Projects
 

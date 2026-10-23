@@ -19,6 +19,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    HasIdCondition,
     IsEmptyCondition,
     MatchText,
     MatchValue,
@@ -56,6 +57,9 @@ CONTEXT_MAX_CHARS = 800  # per-entry cap in GET /context?format=text
 # caller may want to supersede. Untuned guess: a flipped decision scored near 0.76 in sampling.
 NEIGHBOR_LIMIT = 3
 NEIGHBOR_MIN_SCORE = float(os.getenv("NEIGHBOR_MIN_SCORE", 0.6))
+# GET /entries/{id}/related is for browsing, so it takes looser matches than the supersede hint
+RELATED_MIN_SCORE = float(os.getenv("RELATED_MIN_SCORE", 0.5))
+RELATED_DEFAULT_LIMIT = 5
 EMBED_DIM = 768  # nomic-embed-text output dimension
 
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
@@ -198,6 +202,17 @@ class Neighbor(BaseModel):
     pinned: bool = False
     created_at: str
     score: float  # cosine similarity to the new entry
+
+
+def to_neighbor(hit) -> "Neighbor":
+    return Neighbor(
+        id=str(hit.id),
+        content=hit.payload["content"],
+        project=hit.payload.get("project"),
+        pinned=hit.payload.get("pinned", False),
+        created_at=hit.payload.get("created_at", ""),
+        score=hit.score,
+    )
 
 
 class IngestResponse(BaseModel):
@@ -626,18 +641,7 @@ async def ingest(req: IngestRequest):
             duplicate_of=str(hit.id),
             duplicate_score=hit.score,
         )
-    possibly_supersedes = [
-        Neighbor(
-            id=str(hit.id),
-            content=hit.payload["content"],
-            project=hit.payload.get("project"),
-            pinned=hit.payload.get("pinned", False),
-            created_at=hit.payload.get("created_at", ""),
-            score=hit.score,
-        )
-        for hit in nearest
-        if hit.score >= NEIGHBOR_MIN_SCORE
-    ]
+    possibly_supersedes = [to_neighbor(hit) for hit in nearest if hit.score >= NEIGHBOR_MIN_SCORE]
 
     entry_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
@@ -856,6 +860,38 @@ async def get_context(
         "pinned_total": pinned_total,
         "recent": recent_entries,
     }
+
+
+@app.get("/entries/{entry_id}/related")
+async def related_entries(
+    entry_id: str,
+    limit: int = Query(RELATED_DEFAULT_LIMIT, ge=1, le=20),
+    min_score: float = Query(RELATED_MIN_SCORE, ge=0, le=1),
+    include_superseded: bool = False,
+):
+    """Entries most similar to this one, computed on read from its own vector (nothing is
+    stored). Scope follows /context: an entry with a project sees that project plus unscoped
+    entries, an unscoped entry sees only unscoped ones. The entry itself is never included."""
+    point = get_point(entry_id, with_vectors=True)
+    query_filter = build_filter(
+        project=point.payload.get("project"),
+        unscoped_only=True,
+        include_superseded=include_superseded,
+    )
+    must_not = [HasIdCondition(has_id=[entry_id])]
+    if query_filter:
+        query_filter.must_not = must_not
+    else:
+        query_filter = Filter(must_not=must_not)
+    hits = qdrant.query_points(
+        collection_name=COLLECTION,
+        query=point.vector,
+        limit=limit,
+        query_filter=query_filter,
+        score_threshold=min_score,
+        with_payload=True,
+    ).points
+    return {"id": entry_id, "related": [to_neighbor(h) for h in hits]}
 
 
 @app.patch("/entries/{entry_id}")
