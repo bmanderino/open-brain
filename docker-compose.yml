@@ -54,7 +54,7 @@ services:
       - OLLAMA_HOST=host.docker.internal
       - OLLAMA_PORT=11434
       - OLLAMA_EMBED_MODEL=nomic-embed-text
-      - OLLAMA_LLM_MODEL=llama3.2
+      - OLLAMA_LLM_MODEL=qwen3:14b
       - COLLECTION_NAME=brain
       # Cosine score at or above which a new entry counts as a duplicate (>1 disables)
       - DEDUP_THRESHOLD=0.92

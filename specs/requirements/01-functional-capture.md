@@ -23,8 +23,9 @@ Requirement keywords: **MUST**, **SHOULD**, **MAY**. Status: ✅ implemented, �
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| META-001 | On ingest, the API MUST call Ollama `/api/generate` with `format: "json"`, `stream: false`, model `OLLAMA_LLM_MODEL` (default `llama3.2`), 20 s timeout. | ✅ |
+| META-001 | On ingest, the API MUST call Ollama `/api/generate` with `format: "json"`, `stream: false`, model `OLLAMA_LLM_MODEL` (default `qwen3:14b`), `think: false` (so a thinking model does not spend its output on reasoning; models without thinking accept it), and a `METADATA_TIMEOUT` timeout (default 60 s). | ✅ |
 | META-002 | The extraction prompt MUST request: `type`, `topics[]`, `people[]`, `action_items[]`. | ✅ |
+| META-009 | The prompt MUST define each `type` (design notes that explain how something works and why are `decision`; `reference` is plain facts, status and known issues), limit `people` to real humans (never tools, products or the author), limit `action_items` to follow-ups the note itself says remain open without inventing any, ask for `[]` rather than filler, and include one example that contains no person's name. Chosen from a 21-entry comparison of five models and three prompts; the definitions mattered about as much as the model. | ✅ |
 | META-003 | Valid `type` values: `decision, idea, meeting, action_item, reference, question, reflection, other`. Any other value MUST be coerced to `other`. | ✅ |
 | META-004 | Extraction MUST NOT fail ingest. On any error (HTTP failure, timeout, invalid JSON) the API MUST log and fall back to `Metadata()` (`type=other`, empty lists) and record `metadata_status: "failed"`. The LLM call times out after `METADATA_TIMEOUT` seconds (default 60). | ✅ |
 | META-005 | Extracted metadata MUST be persisted in the point payload as top-level keys `type, topics, people, action_items`, plus `metadata_status` (`"ok"`, `"failed"`, or `"manual"` once a user has hand-edited the metadata, UPD-006). The ingest response, `/entries`, and duplicate responses include `metadata_status` (`null` for entries stored before the field existed). | ✅ |

@@ -33,7 +33,7 @@ def patch_ollama(monkeypatch, **kw):
 
 
 def test_all_good(client, monkeypatch):
-    patch_ollama(monkeypatch, models=["nomic-embed-text:latest", "llama3.2:latest"])
+    patch_ollama(monkeypatch, models=["nomic-embed-text:latest", main.LLM_MODEL])
     body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["qdrant"] == {"ok": True, "collection_exists": True}
@@ -49,7 +49,7 @@ def test_missing_llm_model_is_degraded(client, monkeypatch):
 
 
 def test_missing_embed_model_is_degraded(client, monkeypatch):
-    patch_ollama(monkeypatch, models=["llama3.2"])
+    patch_ollama(monkeypatch, models=[main.LLM_MODEL])
     assert client.get("/health").json()["ollama"]["embed_model_present"] is False
 
 
@@ -62,7 +62,7 @@ def test_ollama_unreachable_is_degraded_but_http_200(client, monkeypatch):
 
 
 def test_qdrant_down_is_degraded(client, monkeypatch):
-    patch_ollama(monkeypatch, models=["nomic-embed-text", "llama3.2"])
+    patch_ollama(monkeypatch, models=["nomic-embed-text", main.LLM_MODEL])
 
     class Broken:
         def get_collections(self):
@@ -75,7 +75,7 @@ def test_qdrant_down_is_degraded(client, monkeypatch):
 
 
 def test_missing_collection_is_degraded(client, monkeypatch):
-    patch_ollama(monkeypatch, models=["nomic-embed-text", "llama3.2"])
+    patch_ollama(monkeypatch, models=["nomic-embed-text", main.LLM_MODEL])
     monkeypatch.setattr(main, "COLLECTION", "other")
     body = client.get("/health").json()
     assert body["status"] == "degraded" and body["qdrant"]["collection_exists"] is False

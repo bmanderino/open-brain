@@ -8,7 +8,7 @@ accumulated context via MCP.
 
 | Service     | Port  | Role                                                      |
 |-------------|-------|-----------------------------------------------------------|
-| Ollama      | 11434 | Embeddings (`nomic-embed-text`) + metadata (`llama3.2`)   |
+| Ollama      | 11434 | Embeddings (`nomic-embed-text`) + metadata (`qwen3:14b`)  |
 | Qdrant      | 6333  | Vector database                                           |
 | Brain API   | 8000  | Ingest + search (FastAPI, Python)                         |
 | MCP Server  | 3001  | Claude Code integration (Python, streamable HTTP)         |
@@ -72,24 +72,27 @@ docker compose ps
 Two models are used:
 
 - `nomic-embed-text` — embeddings (**required**).
-- `llama3.2` — extracts each entry's type, topics, people, and action items. If it's
+- `qwen3:14b` (about 9 GB) — extracts each entry's type, topics, people, and action items. If it's
   missing or too slow (the call times out after `METADATA_TIMEOUT` seconds, default 60, which
   matters for a cold model load), entries are still stored but get type `other` and no extracted
   metadata. Such entries are marked `metadata_status: failed`, and `add_to_brain` says so.
-  To use a different model you already have, set `OLLAMA_LLM_MODEL` on `brain-api`.
+  To use a different model you already have, set `OLLAMA_LLM_MODEL` on `brain-api`. On a small
+  machine, `llama3.2` (2 GB) still works but labels much worse: in a 21-entry comparison it got
+  19% of types right with the original prompt, against 71% for `qwen3:14b` with the current one.
+  `mistral-small3.2` (15 GB) scored a little higher on types but is about twice as slow.
 
 With host Ollama:
 
 ```bash
 ollama pull nomic-embed-text
-ollama pull llama3.2
+ollama pull qwen3:14b
 ```
 
 With the Ollama container:
 
 ```bash
 docker exec ollama ollama pull nomic-embed-text
-docker exec ollama ollama pull llama3.2
+docker exec ollama ollama pull qwen3:14b
 ```
 
 This only needs to be done once per model.
@@ -388,7 +391,7 @@ Check that Ollama is running where `OLLAMA_HOST` points (host Ollama by default:
 On Linux with host Ollama, it must listen on an address reachable from containers.
 
 **Entries have no type/topics:**
-The metadata model (`llama3.2` by default) isn't installed or failed to respond.
+The metadata model (`qwen3:14b` by default) isn't installed or failed to respond.
 Pull it, or point `OLLAMA_LLM_MODEL` at an installed model, then check
 `docker compose logs brain-api` for `[metadata]` messages.
 

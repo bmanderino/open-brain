@@ -5,7 +5,7 @@
 | ID | Requirement | Status |
 |----|-------------|--------|
 | DEP-001 | The full stack MUST start with `docker compose up -d`. | ✅ |
-| DEP-002 | After first start the user MUST pull the embedding model once: `docker exec ollama ollama pull nomic-embed-text`. The metadata model (`llama3.2`) must be pulled likewise or extraction silently falls back (see META-004). README only documents the embedding model. | ⚠️ |
+| DEP-002 | After first start the user MUST pull the embedding model once: `docker exec ollama ollama pull nomic-embed-text`. The metadata model (`qwen3:14b`, about 9 GB) must be pulled likewise or extraction silently falls back (see META-004). README only documents the embedding model. | ⚠️ |
 | DEP-003 | Services share the `brain-net` bridge network; services restart `unless-stopped`. | ✅ |
 | DEP-004 | Brain API starts after `qdrant` and `ollama` (`depends_on`, start order only, no health-based wait). If Qdrant isn't ready the API's startup collection check may crash and rely on restart. | ⚠️ |
 | DEP-005 | Qdrant image is `latest` (unpinned) while the client is pinned at 1.11.3; version drift risk. Image tags SHOULD be pinned. | ⚠️ |
@@ -28,7 +28,7 @@
 | `QDRANT_HOST` / `QDRANT_PORT` | brain-api | `localhost` / `6333` | Vector DB location |
 | `OLLAMA_HOST` / `OLLAMA_PORT` | brain-api | `localhost` / `11434` | Ollama location |
 | `OLLAMA_EMBED_MODEL` | brain-api | `nomic-embed-text` | Embedding model |
-| `OLLAMA_LLM_MODEL` | brain-api | `llama3.2` | Metadata extraction model |
+| `OLLAMA_LLM_MODEL` | brain-api | `qwen3:14b` | Metadata extraction model |
 | `COLLECTION_NAME` | brain-api | `brain` | Qdrant collection |
 | `METADATA_TIMEOUT` | brain-api | `60` | Seconds to wait for the LLM metadata call before recording `metadata_status: failed` |
 | `DEDUP_THRESHOLD` | brain-api | `0.92` | Cosine score at/above which an ingest is treated as a near-duplicate and not stored (values above 1 disable) |
@@ -48,7 +48,7 @@
 ### Performance
 | ID | Requirement |
 |----|-------------|
-| NFR-001 | Ingest SHOULD complete in seconds on GPU/Metal hardware; because embedding and metadata run in parallel, latency ≈ max of the two. Timeouts: embed 30 s, metadata 20 s, MCP add 60 s, MCP search/list/stats 30 s. |
+| NFR-001 | Ingest SHOULD complete in seconds on GPU/Metal hardware; because embedding and metadata run in parallel, latency ≈ max of the two. Timeouts: embed 30 s, metadata 60 s (`METADATA_TIMEOUT`), MCP add 60 s, MCP search/list/stats 30 s. |
 | NFR-002 | Search latency SHOULD be dominated by one embedding call plus a Qdrant ANN query. |
 | NFR-003 | Target scale: a single user, up to ~10⁴–10⁵ entries. Stats and list endpoints are not designed beyond this. |
 

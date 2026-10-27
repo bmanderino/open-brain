@@ -41,7 +41,7 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost")
 OLLAMA_PORT = int(os.getenv("OLLAMA_PORT", 11434))
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "llama3.2")
+LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen3:14b")
 COLLECTION = os.getenv("COLLECTION_NAME", "brain")
 CORS_ORIGINS = [
     o.strip()
@@ -283,17 +283,29 @@ async def get_embedding(text: str) -> list[float]:
         return data["embeddings"][0]
 
 
-EXTRACTION_PROMPT = """Extract metadata from the following text and respond with ONLY valid JSON — no explanation, no markdown.
+EXTRACTION_PROMPT = """You label notes for a personal knowledge base. Respond with ONLY valid JSON.
 
-JSON schema:
-{{
-  "type": "one of: decision, idea, meeting, action_item, reference, question, reflection, other",
-  "topics": ["list of short topic strings"],
-  "people": ["list of person names mentioned"],
-  "action_items": ["list of follow-up actions"]
-}}
+Fields:
+- "type": exactly one of
+    decision    - a choice that was made, a standing rule or preference, or a design note
+                  explaining how something works and why
+    idea        - a suggestion or possibility that has not been decided
+    meeting     - notes from a conversation between people
+    action_item - a task to do, with little other context
+    reference   - plain facts, status or known issues to look up later (no design rationale)
+    question    - something the author is asking or wondering
+    reflection  - the author's thoughts about themselves or their habits
+    other       - none of the above
+- "topics": 1 to 3 short noun phrases naming what the note is about. Do not copy sentences.
+- "people": names of real human beings only. Never tools, products, companies, models or the author. Use [] if none.
+- "action_items": follow-up tasks the note itself says remain to be done, including things described as open, to revisit, to check, to tune or to verify. Do not invent tasks the note does not mention, and do not turn rules or facts into tasks. Use [] if none.
 
-Text:
+Use [] for any empty list. Never write "none" or "N/A".
+
+Example note: "We chose Redis over Memcached for the session cache. Still need to benchmark it under load."
+Example output: {{"type": "decision", "topics": ["session cache", "Redis vs Memcached"], "people": [], "action_items": ["Benchmark Redis under load"]}}
+
+Note:
 \"\"\"
 {content}
 \"\"\"
@@ -313,6 +325,7 @@ async def extract_metadata(content: str) -> tuple[Metadata, str]:
                     "prompt": EXTRACTION_PROMPT.format(content=content),
                     "format": "json",
                     "stream": False,
+                    "think": False,  # qwen3 would otherwise spend its output on reasoning
                 },
             )
             if resp.status_code != 200:

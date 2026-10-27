@@ -4,7 +4,7 @@ Prioritized work for Open Brain, based on a code review of `brain-api/main.py`, 
 
 ## Context
 
-Open Brain is a fully local personal knowledge base: FastAPI + Qdrant + Ollama (`nomic-embed-text` for embeddings, `llama3.2` for metadata), a FastMCP server over streamable HTTP, and a React UI. The main consumer is Claude Code via MCP, so MCP behavior matters more than the web UI when deciding priorities.
+Open Brain is a fully local personal knowledge base: FastAPI + Qdrant + Ollama (`nomic-embed-text` for embeddings, `qwen3:14b` for metadata), a FastMCP server over streamable HTTP, and a React UI. The main consumer is Claude Code via MCP, so MCP behavior matters more than the web UI when deciding priorities.
 
 The local-only, `docker compose up` setup is the main differentiator versus other personal memory projects. Most of them either need a hosted DB (Supabase) or have dropped their local option (Mem0's OpenMemory was sunset in 2026). Don't trade that away. Anything added should run in the existing Compose stack with no new cloud dependency.
 
@@ -151,11 +151,11 @@ If ingest-time neighbors are already returned for #9, reuse that lookup rather t
 
 ### 11. Open loops and review (deferred)
 
-**Status:** Hold until #7 is in use and there's evidence that action items get read. This is the riskiest item in the round: it changes the shape of `action_items`, which touches the payload, import/export, the UI, and the metadata-edit path. The items also come from `llama3.2` extraction, so they're likely noisy, and a todo list built on noisy extraction tends to rot.
+**Status:** Hold until #7 is in use and there's evidence that action items get read. This is the riskiest item in the round: it changes the shape of `action_items`, which touches the payload, import/export, the UI, and the metadata-edit path. The items also come from LLM extraction (found 11 of 14 expected items with `qwen3:14b` and the current prompt, and invented none, but on only 21 entries), so they may still be noisy, and a todo list built on noisy extraction tends to rot.
 
 **Why:** Action items are already extracted (FEAT-008) but have no state, so they pile up with no way to tell what's open. The Supabase version has weekly review synthesis of themes and open loops.
 
-**Suggested approach:** Give action items a status (open/done) and a way to flip it, either by storing them as structured objects or by a parallel `done_actions` field. Be careful here: the payload currently stores `action_items` as a list of strings, so changing the shape needs a migration and an import/export update. Add an `open_actions(project)` MCP tool and an action list view in the UI. Optionally add `review(since)` that groups recent entries by topic and lists open actions, using `llama3.2` only if a plain grouped listing isn't enough.
+**Suggested approach:** Give action items a status (open/done) and a way to flip it, either by storing them as structured objects or by a parallel `done_actions` field. Be careful here: the payload currently stores `action_items` as a list of strings, so changing the shape needs a migration and an import/export update. Add an `open_actions(project)` MCP tool and an action list view in the UI. Optionally add `review(since)` that groups recent entries by topic and lists open actions, using the local LLM only if a plain grouped listing isn't enough.
 
 ### 12. Transcript indexing (optional, lower priority)
 
@@ -181,3 +181,23 @@ If ingest-time neighbors are already returned for #9, reuse that lookup rather t
 ## Open question: retrieval quality
 
 Nothing measures whether retrieval is actually good. Hybrid search and the dedup threshold were both tuned on small samples. Before #9 relies on similarity thresholds, consider a small fixed set of queries with expected hits (a few dozen is enough, run against a seeded test collection) so changes to search, thresholds, or models can be compared instead of guessed at. Optional, but it would make the numbers in #3, #5, and #9 less of a guess.
+
+## Metadata model comparison (2026-10-27)
+
+Metadata from `llama3.2` was poor, so the default is now `qwen3:14b` with a rewritten `EXTRACTION_PROMPT` (META-001, META-009). The comparison ran five installed models (`llama3.2`, `qwen3` 8B, `hermes3`, `qwen3:14b`, `mistral-small3.2`) against three prompts on 21 entries: the 14 real ones plus 7 synthetic ones covering meetings, questions, reflections and people. Labels were drafted by hand and the `decision` vs `reference` boundary was set by the user (design notes count as `decision`).
+
+| model / prompt | type accuracy | spurious people | action items found | action items invented | median seconds |
+|---|---|---|---|---|---|
+| `llama3.2` / original | 19% | 9 | 8/14 | 4 | 0.4 |
+| `qwen3:14b` / current | 71% | 0 | 11/14 | 0 | 1.5 |
+| `mistral-small3.2` / current | 76% | 0 | 13/14 | 6 | 3.1 |
+
+Takeaways: the prompt rewrite lifted every model, and `llama3.2` stayed bad even with it (it put the author and tool names in `people`). `mistral-small3.2` scored higher but is twice as slow and heavier (15 GB), and some of its "invented" actions were arguably valid.
+
+Caveats and follow-ups:
+- 21 entries is small and the labels are one person's judgment; differences of a few points are noise. Re-run once the brain holds entries from other projects. The comparison script and labels were not kept in the repo.
+- `qwen3:14b` still labels most design notes `reference`. Fix by `update_brain_entry(type=...)` or by sharpening the prompt.
+- Existing entries keep their old metadata until re-extracted (`update_brain_entry(reextract=True)`), which overwrites hand edits.
+- Generation runs at Ollama's default temperature; the comparison used temperature 0. Setting it in the request would match what was measured.
+- A cold `qwen3:14b` load may approach `METADATA_TIMEOUT` (60 s), which is also the MCP `add_to_brain` timeout.
+- Not tried: models that are not already installed.
