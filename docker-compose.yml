@@ -22,7 +22,7 @@ services:
   # Vector Database
   # -----------------------------------------
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.20.0
     container_name: open-brain-qdrant
     restart: unless-stopped
     ports:

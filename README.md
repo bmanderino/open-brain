@@ -13,6 +13,7 @@ accumulated context via MCP.
 | Brain API   | 8000  | Ingest + search (FastAPI, Python)                         |
 | MCP Server  | 3001  | Claude Code integration (Python, streamable HTTP)         |
 | Web UI      | 5173  | Browser capture + search                                  |
+| Open WebUI  | 8080  | Optional: chat with your local Ollama models (not part of Open Brain itself) |
 
 All services run via Docker Compose. Every published port is bound to `127.0.0.1`,
 so the stack is reachable from your machine only. There is **no authentication**,
@@ -21,6 +22,39 @@ so don't expose these ports to a network you don't trust.
 By default the Brain API uses an **Ollama installed on your host** (reached via
 `host.docker.internal`). The compose file also defines an `ollama` container, but it
 doesn't publish a port and isn't used unless you switch to it (see below).
+
+**Open WebUI** (<http://localhost:8080>) is an optional extra bundled in the compose file: a chat
+interface for the Ollama models on your machine. It doesn't read or write the brain, but it is a
+convenient way to try the models and see what runs locally. Remove the `open-webui` service from
+`docker-compose.yml` if you don't want it (its image takes about 6 GB of disk).
+
+---
+
+## Prerequisites
+
+- **Docker** with Compose v2 (`docker compose`, not `docker-compose`). Tested with Docker 29 and Compose 5.
+- **Ollama 0.9.0 or later**, on the host (default) or in a container. Metadata extraction sends
+  `think: false` so `qwen3` doesn't spend its output on reasoning, and older Ollama versions don't support that.
+- **Disk and memory:** about 9 GB for `qwen3:14b` plus a small one for `nomic-embed-text`, and enough RAM to
+  hold the 14B model in memory (more than 9 GB free, so 16 GB machines will be tight). The first
+  `docker compose up` also needs roughly 13 GB of disk for images (the unused `ollama` container, about 7 GB, and
+  Open WebUI, about 6 GB, as measured on disk). On a small
+  machine, use a smaller `OLLAMA_LLM_MODEL` (see step 3) and remove the services you don't need.
+- **Claude Code**, to use the MCP tools. The API and web UI work without it.
+
+## Quick start
+
+```bash
+docker compose up -d                 # build and start everything
+ollama pull nomic-embed-text         # embeddings (required)
+ollama pull qwen3:14b                # metadata extraction (~9 GB)
+curl http://localhost:8000/health    # expect "status": "ok"
+claude mcp add --scope user --transport http open-brain http://localhost:3001/mcp
+```
+
+Then restart Claude Code and open <http://localhost:5173>. Step 6 below adds the hook that loads your
+brain at the start of every session. The sections that follow explain each step and the alternatives
+(an Ollama container instead of host Ollama, other models).
 
 ---
 
@@ -122,7 +156,7 @@ Edit (or create) `~/.claude.json`:
 ```
 
 The server uses the streamable HTTP transport, so the type is `http` (not `sse`).
-Alternatively: `claude mcp add --transport http open-brain http://localhost:3001/mcp`.
+Alternatively: `claude mcp add --scope user --transport http open-brain http://localhost:3001/mcp`.
 
 Restart Claude Code. You should see `open-brain` in the available tools.
 
@@ -135,6 +169,34 @@ http://localhost:5173
 The Brain API only accepts browser requests from the web UI's origins. If you serve
 the UI from a different URL, set `CORS_ORIGINS` (comma-separated) on `brain-api`.
 
+### 6. Load your brain at the start of every session (recommended)
+
+Without a hook the brain is only used when someone remembers to ask. Add this to
+`~/.claude/settings.json` (merge it with any existing `hooks`) and every Claude Code session starts with the
+pinned and recent entries for that repo:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true; grep -qsiE 'open.?brain|add_to_brain' \"$CLAUDE_PROJECT_DIR/CLAUDE.md\" \"$CLAUDE_PROJECT_DIR/AGENTS.md\" || { echo; echo 'Note: this repo has no CLAUDE.md or AGENTS.md reference to Open Brain. Offer to add a short section: when saving with add_to_brain pass project=<repo folder name>, and use search_brain and list_brain with the same project. Ask the user before editing the file.'; }"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+If the repo's `CLAUDE.md` or `AGENTS.md` doesn't mention Open Brain yet, the hook also tells Claude to
+offer adding a short usage section, and to ask before editing. How the context is built, and what hooks
+can and can't do, is under [Loading context automatically](#loading-context-automatically-sessionstart-hook).
+
 ---
 
 ## Using with Claude Code
@@ -146,7 +208,6 @@ Once connected, Claude Code can:
 - **`add_to_brain`** — store thoughts/decisions during a session; optional `tags`, `project`, and `pinned`
 - **`list_brain`** — see recent entries, newest first; optional `project`, `type`, `tag`, `pinned` filters
 - **`update_brain_entry`** — fix an entry's content, tags, project, pinned state, or its extracted type/topics/people/action items, or re-run metadata extraction
-- **`related_to`** — entries similar to a given one, computed when called
 - **`related_to`** — entries similar to a given one, computed when called
 - **`supersede_brain_entry`** — mark an entry as replaced by a newer one so it stops appearing in searches
 - **`brain_stats`** — totals, entries by source, top topics, and top people
@@ -227,28 +288,9 @@ when more were hidden. `recent` sets how many recent entries follow (default 5).
 
 #### Loading context automatically (SessionStart hook)
 
-Without a hook the brain is only used when someone remembers to ask. A Claude Code `SessionStart`
-hook can load this context at the start of every session. Add it to `~/.claude/settings.json` so it
-applies to every repo (or to `.claude/settings.json` in a single repo, but not both, or the context is
-injected twice); the project name is the repo folder name:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true; grep -qsiE 'open.?brain|add_to_brain' \"$CLAUDE_PROJECT_DIR/CLAUDE.md\" \"$CLAUDE_PROJECT_DIR/AGENTS.md\" || { echo; echo 'Note: this repo has no CLAUDE.md or AGENTS.md reference to Open Brain. Offer to add a short section: when saving with add_to_brain pass project=<repo folder name>, and use search_brain and list_brain with the same project. Ask the user before editing the file.'; }"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+The hook itself is Setup [step 6](#6-load-your-brain-at-the-start-of-every-session-recommended). It
+goes in `~/.claude/settings.json` so it applies to every repo (or in `.claude/settings.json` of a single
+repo, but not both, or the context is injected twice). The project name is the repo folder name.
 
 Claude Code adds a `SessionStart` hook's output to the session as context. The command prints
 nothing, and does not fail the session, if the API is down. The context text ends with a reminder

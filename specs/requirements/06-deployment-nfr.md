@@ -5,10 +5,12 @@
 | ID | Requirement | Status |
 |----|-------------|--------|
 | DEP-001 | The full stack MUST start with `docker compose up -d`. | ✅ |
-| DEP-002 | After first start the user MUST pull the embedding model once: `docker exec ollama ollama pull nomic-embed-text`. The metadata model (`qwen3:14b`, about 9 GB) must be pulled likewise or extraction silently falls back (see META-004). README only documents the embedding model. | ⚠️ |
+| DEP-002 | After first start the user MUST pull the embedding model once (`ollama pull nomic-embed-text`, or `docker exec ollama ollama pull ...` with the container). The metadata model (`qwen3:14b`, about 9 GB) must be pulled likewise or extraction falls back (see META-004). The README documents both, in a Quick start and in Setup step 3. | ✅ |
 | DEP-003 | Services share the `brain-net` bridge network; services restart `unless-stopped`. | ✅ |
 | DEP-004 | Brain API starts after `qdrant` and `ollama` (`depends_on`, start order only, no health-based wait). If Qdrant isn't ready the API's startup collection check may crash and rely on restart. | ⚠️ |
-| DEP-005 | Qdrant image is `latest` (unpinned) while the client is pinned at 1.11.3; version drift risk. Image tags SHOULD be pinned. | ⚠️ |
+| DEP-005 | The Qdrant image is pinned (`qdrant/qdrant:v1.20.0`, the server version the stack was verified against); the Python client stays at 1.11.3. Bump the tag deliberately. | ✅ |
+| DEP-006 | The README MUST state the prerequisites: Docker with Compose v2, Ollama 0.9.0 or later (the `think` option used by metadata extraction), disk and RAM for `qwen3:14b`, and the size of the first image downloads. | ✅ |
+| DEP-007 | The repository carries an MIT `LICENSE` file. | ✅ |
 
 ### Services and Ports
 
