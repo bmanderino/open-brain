@@ -228,8 +228,9 @@ when more were hidden. `recent` sets how many recent entries follow (default 5).
 #### Loading context automatically (SessionStart hook)
 
 Without a hook the brain is only used when someone remembers to ask. A Claude Code `SessionStart`
-hook can load this context at the start of every session. Add it to `.claude/settings.json` in a
-repo (or `~/.claude/settings.json` for every repo); the project name is the repo folder name:
+hook can load this context at the start of every session. Add it to `~/.claude/settings.json` so it
+applies to every repo (or to `.claude/settings.json` in a single repo, but not both, or the context is
+injected twice); the project name is the repo folder name:
 
 ```json
 {
