@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true"
+            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true; grep -qsiE 'open.?brain|add_to_brain' \"$CLAUDE_PROJECT_DIR/CLAUDE.md\" \"$CLAUDE_PROJECT_DIR/AGENTS.md\" || { echo; echo 'Note: this repo has no CLAUDE.md or AGENTS.md reference to Open Brain. Offer to add a short section: when saving with add_to_brain pass project=<repo folder name>, and use search_brain and list_brain with the same project. Ask the user before editing the file.'; }"
           }
         ]
       }

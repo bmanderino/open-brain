@@ -240,7 +240,7 @@ repo (or `~/.claude/settings.json` for every repo); the project name is the repo
         "hooks": [
           {
             "type": "command",
-            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true"
+            "command": "curl -sfG --max-time 5 http://localhost:8000/context --data-urlencode \"project=$(basename \"$CLAUDE_PROJECT_DIR\")\" --data-urlencode format=text || true; grep -qsiE 'open.?brain|add_to_brain' \"$CLAUDE_PROJECT_DIR/CLAUDE.md\" \"$CLAUDE_PROJECT_DIR/AGENTS.md\" || { echo; echo 'Note: this repo has no CLAUDE.md or AGENTS.md reference to Open Brain. Offer to add a short section: when saving with add_to_brain pass project=<repo folder name>, and use search_brain and list_brain with the same project. Ask the user before editing the file.'; }"
           }
         ]
       }
@@ -253,6 +253,12 @@ Claude Code adds a `SessionStart` hook's output to the session as context. The c
 nothing, and does not fail the session, if the API is down. The context text ends with a reminder
 to save decisions with `add_to_brain` and the project name, which is how saving gets prompted.
 Your `CLAUDE.md` should still say to pass `project` when saving.
+
+The hook command also ends with a check: if neither `CLAUDE.md` nor `AGENTS.md` in the repo
+mentions Open Brain (`open brain`, `open-brain` or `add_to_brain`), it prints a one-line note
+telling Claude to offer adding a short section (pass `project` when saving, search with the same
+project) and to ask before editing. Once the file mentions Open Brain the note disappears, so
+it costs nothing in configured repos. The snippet above is the full command; copy it as is.
 
 What hooks can't do: per Claude Code's hook docs, only `SessionStart` and `UserPromptSubmit`
 output reaches the model, so a `SessionEnd` or `PreCompact` hook cannot nudge Claude to save

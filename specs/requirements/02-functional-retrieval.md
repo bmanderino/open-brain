@@ -70,6 +70,7 @@ What a session should know up front, in one small response. Built to be injected
 | CTX-003 | The JSON form MUST be `{project, pinned[], pinned_total, recent[]}` with entries in the flat `/entries` shape. `pinned_total` counts all matching pins even when the list is capped. | ✅ |
 | CTX-004 | `format=text` MUST return compact `text/plain`: a title, a `Pinned:` and a `Recent:` section with one line per entry (date, project or `general`, whitespace collapsed, truncated to 800 characters), a note when pins were hidden by the cap, and a closing line telling the model to save with `add_to_brain` (with the project) and search for anything older. | ✅ |
 | CTX-005 | The text form is the only capture nudge available to hooks: as far as Claude Code documents, `SessionStart` (and `UserPromptSubmit`) stdout is added to the model's context, but `SessionEnd` output is not, so the saving reminder rides along with the context. See the README for what each hook event can and cannot do. | ✅ |
+| CTX-006 | The documented `SessionStart` hook command MUST also print a one-line note, when neither `CLAUDE.md` nor `AGENTS.md` in the project mentions Open Brain, telling the model to offer adding a short usage section and to ask before editing. The check is shell-side because the API cannot see the repo. | ✅ |
 
 ## Related entries
 
