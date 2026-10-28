@@ -178,9 +178,28 @@ If ingest-time neighbors are already returned for #9, reuse that lookup rather t
 3. #10, as a compute-on-read endpoint and tool.
 4. #11 and #12 only if usage justifies them.
 
-## Open question: retrieval quality
+## Retrieval eval set (next up, collect cases first)
 
-Nothing measures whether retrieval is actually good. Hybrid search and the dedup threshold were both tuned on small samples. Before #9 relies on similarity thresholds, consider a small fixed set of queries with expected hits (a few dozen is enough, run against a seeded test collection) so changes to search, thresholds, or models can be compared instead of guessed at. Optional, but it would make the numbers in #3, #5, and #9 less of a guess.
+Nothing measures whether retrieval is actually good. Hybrid search, `DEDUP_THRESHOLD` (0.92), `NEIGHBOR_MIN_SCORE` (0.6) and `RELATED_MIN_SCORE` (0.5) were all set from small samples, and the related floor filters almost nothing in a single-topic brain (every entry scores 0.63-0.69 against every other). A fixed set of cases lets changes to search, thresholds or models be compared instead of guessed at.
+
+**Collect cases from real use before building anything.** The set should come from misses, not invention. For a few weeks of normal use across several repos, note each time the brain:
+- failed to surface an entry that exists (a search or `get_context` that should have hit),
+- surfaced noise, or ranked something obviously wrong first,
+- flagged a duplicate or a `possibly_supersedes` neighbor wrongly, or missed one it should have caught.
+
+Each note is one case: the query (or the entry being added), the project, and the entry id or text that should or should not come back. Aim for 30-50, with a few cases per behavior.
+
+**Shape of the harness.** A standalone script, not part of the API, in the style of the `/ingest` and `/search` curl examples:
+- Seed a throwaway collection (`COLLECTION_NAME=brain-eval`) from an `/export` file, so the live brain is never touched. Entries are re-embedded on `/import`, so the same file works across embedding models.
+- Run each case through `POST /search` (and `/ingest` for the dedup cases, `/entries/{id}/related` for related), then score: hit@1, hit@5 and mean reciprocal rank for search, and precision/recall at the dedup and neighbor thresholds.
+- Print a small table, so two runs (before and after a change) can be compared side by side.
+
+**What it should answer:**
+1. Where should `DEDUP_THRESHOLD`, `NEIGHBOR_MIN_SCORE` and `RELATED_MIN_SCORE` actually sit? Tune only once the brain holds varied topics; until then the numbers are not informative.
+2. Does hybrid search beat `mode: semantic` on real queries, as it did on the early samples?
+3. Does a different embedding model or `OLLAMA_LLM_MODEL` help? Run the same cases against each.
+
+**Caveats.** The cases are one person's judgment, and a few dozen cases only detect large differences, so treat gaps of a few points as noise. Keep the case file in the repo (without private entries, or generated from a synthetic export) so the comparison is repeatable; the earlier metadata comparison's script and labels were lost for want of this.
 
 ## Metadata model comparison (2026-10-27)
 
