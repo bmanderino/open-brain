@@ -409,15 +409,18 @@ The MCP server has its own tests (`mcp-server/`, same commands, needs Python 3.1
 tools with the HTTP layer faked and check the requests sent to the Brain API and the text returned
 to Claude. The web UI has no tests yet.
 
-Lint with [ruff](https://docs.astral.sh/ruff/) (installed by `requirements-dev.txt`; config in
-`ruff.toml`) from the repo root:
+Lint and format with [ruff](https://docs.astral.sh/ruff/) (installed by `requirements-dev.txt`;
+config in `ruff.toml`) from the repo root:
 
 ```bash
 ruff check .
+ruff format .
 ```
 
+CI runs `ruff format --check .`, so run `ruff format .` before committing.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests:
-ruff, the API tests and MCP server tests (Python 3.12), a web UI production build, and `docker compose config`
+ruff (lint and format check), the API tests and MCP server tests (Python 3.12), a web UI production build, and `docker compose config`
 to validate the compose file.
 
 ---
