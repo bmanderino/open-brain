@@ -1,6 +1,7 @@
 """The MCP tools are plain async functions that call the Brain API over HTTP. These tests call
 them directly with httpx's transport replaced by a fake, so they check exactly which requests
 the tools send and what text they hand back to Claude."""
+
 import asyncio
 import importlib.util
 import json

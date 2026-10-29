@@ -1,5 +1,6 @@
 """Test setup: the real FastAPI app runs against an in-memory Qdrant, with the two Ollama
 calls (embedding and metadata extraction) replaced by deterministic fakes."""
+
 import asyncio
 import hashlib
 import math

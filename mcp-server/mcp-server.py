@@ -62,7 +62,9 @@ async def search_brain(
             pin = " | pinned" if r.get("pinned") else ""
             if r.get("superseded_by"):
                 pin += f" | superseded by {r['superseded_by']}"
-            lines.append(f"{i}. [{r['id']}] (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{pin}{tags})")
+            lines.append(
+                f"{i}. [{r['id']}] (score: {r['score']:.3f}{kw} | {date} | via {r['source']}{proj}{pin}{tags})"
+            )
             lines.append(f"   {r['content']}")
 
             meta = r.get("metadata", {})
@@ -111,8 +113,12 @@ async def add_to_brain(
         resp = await client.post(
             f"{BRAIN_API_URL}/ingest",
             json={
-                "content": content, "tags": tags, "source": "mcp", "project": project,
-                "force": force, **({"pinned": True} if pinned else {}),
+                "content": content,
+                "tags": tags,
+                "source": "mcp",
+                "project": project,
+                "force": force,
+                **({"pinned": True} if pinned else {}),
             },
         )
         if resp.status_code != 200:
@@ -120,8 +126,12 @@ async def add_to_brain(
 
         data = resp.json()
         if data.get("duplicate_of"):
-            hint = "" if data.get("pinned") or not pinned else (
-                " To pin the existing entry instead, call update_brain_entry with pinned=True."
+            hint = (
+                ""
+                if data.get("pinned") or not pinned
+                else (
+                    " To pin the existing entry instead, call update_brain_entry with pinned=True."
+                )
             )
             return (
                 f"Not stored: a near-duplicate already exists (id: {data['duplicate_of']}, "
@@ -203,7 +213,10 @@ async def update_brain_entry(
     if pinned is not None:
         body["pinned"] = pinned
     for key, value in (
-        ("type", type), ("topics", topics), ("people", people), ("action_items", action_items),
+        ("type", type),
+        ("topics", topics),
+        ("people", people),
+        ("action_items", action_items),
     ):
         if value is not None:
             body[key] = value

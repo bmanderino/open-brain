@@ -80,6 +80,7 @@ qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 # Startup
 
+
 @app.on_event("startup")
 async def startup():
     existing = [c.name for c in qdrant.get_collections().collections]
@@ -123,7 +124,14 @@ async def startup():
 # Models
 
 ENTRY_TYPES = {
-    "decision", "idea", "meeting", "action_item", "reference", "question", "reflection", "other",
+    "decision",
+    "idea",
+    "meeting",
+    "action_item",
+    "reference",
+    "question",
+    "reflection",
+    "other",
 }
 PLACEHOLDERS = {"", "none", "n/a", "na", "null", "nil", "unknown"}
 # "None mentioned", "no one", "Not applicable"... but not "Nonetheless Inc" or a person named Nil
@@ -175,6 +183,7 @@ class UpdateRequest(BaseModel):
     """Only fields that are sent are changed. project: null or "" clears it. The metadata
     fields (type, topics, people, action_items) hand-edit what the LLM extracted; a list
     replaces the old one and [] clears it. They win over extraction in the same request."""
+
     content: Optional[str] = None
     tags: Optional[list[str]] = None
     project: Optional[str] = None
@@ -184,7 +193,9 @@ class UpdateRequest(BaseModel):
     topics: Optional[list[str]] = None
     people: Optional[list[str]] = None
     action_items: Optional[list[str]] = None
-    superseded_by: Optional[str] = None  # id of the entry that replaces this one; null or "" restores it
+    superseded_by: Optional[str] = (
+        None  # id of the entry that replaces this one; null or "" restores it
+    )
 
     @field_validator("type")
     @classmethod
@@ -196,6 +207,7 @@ class UpdateRequest(BaseModel):
 
 class Neighbor(BaseModel):
     """An existing entry close to a newly stored one; the caller decides if it is now outdated."""
+
     id: str
     content: str
     project: Optional[str] = None
@@ -224,7 +236,9 @@ class IngestResponse(BaseModel):
     pinned: bool = False
     created_at: str
     metadata: Metadata
-    metadata_status: Optional[str] = None  # "ok" or "failed"; None on entries stored before this field existed
+    metadata_status: Optional[str] = (
+        None  # "ok" or "failed"; None on entries stored before this field existed
+    )
     duplicate_of: Optional[str] = None  # set when an existing near-duplicate was returned instead
     duplicate_score: Optional[float] = None
     superseded_by: Optional[str] = None
@@ -266,6 +280,7 @@ class SearchResponse(BaseModel):
 
 # Helpers
 
+
 async def get_embedding(text: str) -> list[float]:
     """Call Ollama to embed text using the current /api/embed endpoint."""
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -274,10 +289,7 @@ async def get_embedding(text: str) -> list[float]:
             json={"model": EMBED_MODEL, "input": text},
         )
         if resp.status_code != 200:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Ollama embedding failed: {resp.text}"
-            )
+            raise HTTPException(status_code=502, detail=f"Ollama embedding failed: {resp.text}")
         data = resp.json()
         # /api/embed returns embeddings as a list of vectors
         return data["embeddings"][0]
@@ -399,7 +411,9 @@ def check_replacement(entry_id: str, replacement: str) -> str:
             collection_name=COLLECTION, ids=[current], with_payload=True, with_vectors=False
         )
         if not found:
-            raise HTTPException(status_code=422, detail=f"No entry with id {current} to supersede with")
+            raise HTTPException(
+                status_code=422, detail=f"No entry with id {current} to supersede with"
+            )
         current = found[0].payload.get("superseded_by")
         if current and str(uuid.UUID(entry_id)) == current:
             raise HTTPException(status_code=422, detail="That would make the supersession circular")
@@ -412,7 +426,9 @@ def parse_timestamp(value: Optional[str], name: str) -> Optional[str]:
     try:
         datetime.fromisoformat(value)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"{name} must be an ISO 8601 timestamp") from None
+        raise HTTPException(
+            status_code=422, detail=f"{name} must be an ISO 8601 timestamp"
+        ) from None
     return value
 
 
@@ -458,16 +474,47 @@ def build_filter(
     after = parse_timestamp(created_after, "created_after")
     before = parse_timestamp(created_before, "created_before")
     if after or before:
-        must.append(
-            FieldCondition(key="created_at", range=DatetimeRange(gt=after, lt=before))
-        )
+        must.append(FieldCondition(key="created_at", range=DatetimeRange(gt=after, lt=before)))
     return Filter(must=must) if must else None
 
 
 STOPWORDS = {
-    "the", "an", "is", "are", "was", "were", "to", "of", "in", "on", "for", "and", "or",
-    "it", "this", "that", "with", "as", "at", "by", "be", "do", "does", "did", "what",
-    "which", "who", "why", "how", "when", "where", "me", "my", "we", "our", "about",
+    "the",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "to",
+    "of",
+    "in",
+    "on",
+    "for",
+    "and",
+    "or",
+    "it",
+    "this",
+    "that",
+    "with",
+    "as",
+    "at",
+    "by",
+    "be",
+    "do",
+    "does",
+    "did",
+    "what",
+    "which",
+    "who",
+    "why",
+    "how",
+    "when",
+    "where",
+    "me",
+    "my",
+    "we",
+    "our",
+    "about",
 }
 RRF_K = 60
 
@@ -560,6 +607,7 @@ def fuse(vector_hits: list, keyword_hits: list, embedding: list[float], limit: i
 
 
 # Routes
+
 
 def model_installed(wanted: str, installed: list[str]) -> bool:
     """Ollama lists models with a tag (llama3.2:latest); a bare name means :latest."""
@@ -804,7 +852,9 @@ def scroll_newest(query_filter: Optional[Filter], limit: int) -> list:
     return results
 
 
-def format_context(project: Optional[str], pinned: list[dict], recent: list[dict], more_pinned: int) -> str:
+def format_context(
+    project: Optional[str], pinned: list[dict], recent: list[dict], more_pinned: int
+) -> str:
     """Compact plain text for injecting into a session (see the SessionStart hook in the README)."""
 
     def line(e: dict) -> str:
@@ -861,7 +911,9 @@ async def get_context(
     if recent:
         taken = {str(r.id) for r in pinned_hits}
         hits = scroll_newest(build_filter(**scope), recent + len(pinned_hits))
-        recent_entries = [entry_dict(r.id, r.payload) for r in hits if str(r.id) not in taken][:recent]
+        recent_entries = [entry_dict(r.id, r.payload) for r in hits if str(r.id) not in taken][
+            :recent
+        ]
 
     if output_format == "text":
         return PlainTextResponse(
@@ -1070,6 +1122,7 @@ IMPORT_CONCURRENCY = 4
 
 class ImportLine(BaseModel):
     """One line of an /export file. Unknown keys are ignored."""
+
     id: Optional[str] = None
     content: str
     source: Optional[str] = "import"

@@ -37,12 +37,19 @@ def entry(**over):
 
 # Registration
 
+
 def test_all_tools_registered_with_descriptions(run, tools):
     listed = run(tools.mcp.list_tools())
     names = {t.name: t for t in listed}
     assert set(names) == {
-        "search_brain", "add_to_brain", "update_brain_entry", "list_brain", "brain_stats",
-        "get_context", "supersede_brain_entry", "related_to",
+        "search_brain",
+        "add_to_brain",
+        "update_brain_entry",
+        "list_brain",
+        "brain_stats",
+        "get_context",
+        "supersede_brain_entry",
+        "related_to",
     }
     # Claude reads these descriptions to decide how to call the tools
     assert "project" in names["search_brain"].description
@@ -61,6 +68,7 @@ def test_no_delete_tool(run, tools):
 
 # search_brain
 
+
 def test_search_sends_only_query_and_limit_by_default(run, tools, api):
     api.reply("POST", "/search", body={"results": []})
     run(tools.search_brain("hello"))
@@ -71,7 +79,11 @@ def test_search_passes_filters_and_maps_source(run, tools, api):
     api.reply("POST", "/search", body={"results": []})
     run(tools.search_brain("q", limit=3, project="p", type="decision", tag="t", source="cli"))
     assert api.last_json() == {
-        "query": "q", "limit": 3, "project": "p", "type": "decision", "tag": "t",
+        "query": "q",
+        "limit": 3,
+        "project": "p",
+        "type": "decision",
+        "tag": "t",
         "source_filter": "cli",
     }
 
@@ -82,10 +94,24 @@ def test_search_no_results_message(run, tools, api):
 
 
 def test_search_formats_results(run, tools, api):
-    api.reply("POST", "/search", body={"results": [result(
-        project="open-brain", tags=["a", "b"],
-        metadata={"type": "decision", "topics": ["x"], "people": ["Dana"], "action_items": ["ship"]},
-    )]})
+    api.reply(
+        "POST",
+        "/search",
+        body={
+            "results": [
+                result(
+                    project="open-brain",
+                    tags=["a", "b"],
+                    metadata={
+                        "type": "decision",
+                        "topics": ["x"],
+                        "people": ["Dana"],
+                        "action_items": ["ship"],
+                    },
+                )
+            ]
+        },
+    )
     out = run(tools.search_brain("q"))
     assert f"[{ID}]" in out  # id is shown so update_brain_entry can use it
     assert "score: 0.812" in out
@@ -98,9 +124,17 @@ def test_search_formats_results(run, tools, api):
 
 
 def test_search_labels_exact_term_matches_only(run, tools, api):
-    api.reply("POST", "/search", body={"results": [
-        result(id="a", match="semantic"), result(id="b", match="keyword"), result(id="c", match="both"),
-    ]})
+    api.reply(
+        "POST",
+        "/search",
+        body={
+            "results": [
+                result(id="a", match="semantic"),
+                result(id="b", match="keyword"),
+                result(id="c", match="both"),
+            ]
+        },
+    )
     out = run(tools.search_brain("q"))
     lines = [ln for ln in out.splitlines() if ln.startswith(("1.", "2.", "3."))]
     assert "exact-term" not in lines[0]
@@ -120,11 +154,16 @@ def test_search_api_error(run, tools, api):
 
 # add_to_brain
 
+
 def test_add_sends_defaults(run, tools, api):
     api.reply("POST", "/ingest", body={"id": ID, "metadata": {}})
     run(tools.add_to_brain("note"))
     assert api.last_json() == {
-        "content": "note", "tags": [], "source": "mcp", "project": None, "force": False,
+        "content": "note",
+        "tags": [],
+        "source": "mcp",
+        "project": None,
+        "force": False,
     }
 
 
@@ -136,11 +175,21 @@ def test_add_passes_project_tags_force(run, tools, api):
 
 
 def test_add_success_output(run, tools, api):
-    api.reply("POST", "/ingest", body={
-        "id": ID, "project": "p",
-        "metadata": {"type": "decision", "topics": ["x"], "people": ["Dana"], "action_items": ["ship"]},
-        "metadata_status": "ok",
-    })
+    api.reply(
+        "POST",
+        "/ingest",
+        body={
+            "id": ID,
+            "project": "p",
+            "metadata": {
+                "type": "decision",
+                "topics": ["x"],
+                "people": ["Dana"],
+                "action_items": ["ship"],
+            },
+            "metadata_status": "ok",
+        },
+    )
     out = run(tools.add_to_brain("note", tags=["t"], project="p"))
     assert f"Stored in brain (id: {ID})" in out
     assert '"note"' in out and "Tags: t" in out and "Project: p" in out
@@ -150,10 +199,17 @@ def test_add_success_output(run, tools, api):
 
 
 def test_add_reports_duplicate_as_not_stored(run, tools, api):
-    api.reply("POST", "/ingest", body={
-        "id": ID, "content": "existing text", "duplicate_of": ID, "duplicate_score": 0.9712,
-        "metadata": {},
-    })
+    api.reply(
+        "POST",
+        "/ingest",
+        body={
+            "id": ID,
+            "content": "existing text",
+            "duplicate_of": ID,
+            "duplicate_score": 0.9712,
+            "metadata": {},
+        },
+    )
     out = run(tools.add_to_brain("existing text again"))
     assert out.startswith("Not stored")
     assert ID in out and "0.971" in out and "existing text" in out
@@ -181,6 +237,7 @@ def test_add_does_not_share_tags_between_calls(run, tools, api):
 
 
 # update_brain_entry
+
 
 def test_update_sends_only_given_fields(run, tools, api):
     api.reply("PATCH", f"/entries/{ID}", body=entry())
@@ -229,10 +286,19 @@ def test_update_docstring_mentions_metadata_editing(run, tools):
 
 
 def test_update_output(run, tools, api):
-    api.reply("PATCH", f"/entries/{ID}", body=entry(
-        content="new text", project="p", tags=["t"], type="decision", topics=["x"],
-        people=["Dana"], action_items=["ship"],
-    ))
+    api.reply(
+        "PATCH",
+        f"/entries/{ID}",
+        body=entry(
+            content="new text",
+            project="p",
+            tags=["t"],
+            type="decision",
+            topics=["x"],
+            people=["Dana"],
+            action_items=["ship"],
+        ),
+    )
     out = run(tools.update_brain_entry(ID, content="new text"))
     assert f"Updated entry {ID}" in out and '"new text"' in out
     assert "Project: p" in out and "Tags: t" in out and "Type: decision" in out
@@ -256,6 +322,7 @@ def test_update_flags_failed_metadata(run, tools, api):
 
 # list_brain
 
+
 def test_list_default_params(run, tools, api):
     api.reply("GET", "/entries", body={"entries": []})
     run(tools.list_brain())
@@ -274,9 +341,15 @@ def test_list_empty_message(run, tools, api):
 
 
 def test_list_output_includes_ids_and_project(run, tools, api):
-    api.reply("GET", "/entries", body={"entries": [
-        entry(project="p", tags=["t"], type="decision", topics=["x"], people=["Dana"]),
-    ]})
+    api.reply(
+        "GET",
+        "/entries",
+        body={
+            "entries": [
+                entry(project="p", tags=["t"], type="decision", topics=["x"], people=["Dana"]),
+            ]
+        },
+    )
     out = run(tools.list_brain())
     assert out.startswith("Recent brain entries:")
     assert f"[{ID}]" in out and "project: p" in out and "[t]" in out
@@ -289,6 +362,7 @@ def test_list_api_error(run, tools, api):
 
 
 # pinned
+
 
 def test_add_sends_pinned_only_when_true(run, tools, api):
     api.reply("POST", "/ingest", body={"id": ID, "metadata": {}})
@@ -359,15 +433,27 @@ def test_supersede_empty_new_id_restores(run, tools, api):
 def test_supersede_reports_missing_entry_and_rejections(run, tools, api):
     api.reply("PATCH", f"/entries/{OLD}", status=404, body={"detail": "Entry not found"})
     assert run(tools.supersede_brain_entry(OLD, ID)) == f"No entry with id {OLD}"
-    api.reply("PATCH", f"/entries/{OLD}", status=422, body={"detail": "An entry cannot supersede itself"})
-    assert run(tools.supersede_brain_entry(OLD, OLD)) == "Not superseded: An entry cannot supersede itself"
+    api.reply(
+        "PATCH", f"/entries/{OLD}", status=422, body={"detail": "An entry cannot supersede itself"}
+    )
+    assert (
+        run(tools.supersede_brain_entry(OLD, OLD))
+        == "Not superseded: An entry cannot supersede itself"
+    )
 
 
 def test_add_lists_possible_replacements(run, tools, api):
-    near = {"id": OLD, "content": "Use Postgres", "created_at": "2026-03-01T00:00:00+00:00", "score": 0.78}
+    near = {
+        "id": OLD,
+        "content": "Use Postgres",
+        "created_at": "2026-03-01T00:00:00+00:00",
+        "score": 0.78,
+    }
     api.reply("POST", "/ingest", body={"id": ID, "metadata": {}, "possibly_supersedes": [near]})
     out = run(tools.add_to_brain("Use SQLite"))
-    assert "Possibly replaces" in out and f"[{OLD}] (2026-03-01, similarity 0.780) Use Postgres" in out
+    assert (
+        "Possibly replaces" in out and f"[{OLD}] (2026-03-01, similarity 0.780) Use Postgres" in out
+    )
     assert f'supersede_brain_entry(old_id, "{ID}")' in out
     api.reply("POST", "/ingest", body={"id": ID, "metadata": {}, "possibly_supersedes": []})
     assert "Possibly replaces" not in run(tools.add_to_brain("Use SQLite"))
@@ -395,9 +481,16 @@ def test_superseded_results_are_marked(run, tools, api):
 
 # related_to
 
+
 def test_related_formats_neighbors(run, tools, api):
-    near = {"id": OLD, "content": "Use Postgres", "project": "p", "pinned": True,
-            "created_at": "2026-03-01T00:00:00+00:00", "score": 0.7123}
+    near = {
+        "id": OLD,
+        "content": "Use Postgres",
+        "project": "p",
+        "pinned": True,
+        "created_at": "2026-03-01T00:00:00+00:00",
+        "score": 0.7123,
+    }
     api.reply("GET", f"/entries/{ID}/related", body={"id": ID, "related": [near]})
     out = run(tools.related_to(ID, limit=3))
     assert api.last_params() == {"limit": "3"}
@@ -407,13 +500,16 @@ def test_related_formats_neighbors(run, tools, api):
 
 def test_related_empty_missing_and_include_superseded(run, tools, api):
     api.reply("GET", f"/entries/{ID}/related", body={"id": ID, "related": []})
-    assert run(tools.related_to(ID, include_superseded=True)) == f"No related entries found for {ID}."
+    assert (
+        run(tools.related_to(ID, include_superseded=True)) == f"No related entries found for {ID}."
+    )
     assert api.last_params()["include_superseded"] == "true"
     api.reply("GET", f"/entries/{ID}/related", status=404, body={"detail": "Entry not found"})
     assert run(tools.related_to(ID)) == f"No entry with id {ID}"
 
 
 # get_context
+
 
 def test_get_context_requests_text_and_returns_it_verbatim(run, tools, api):
     api.reply("GET", "/context", body="Open Brain context:\n\n- (2026-10-22, general) hi")
@@ -435,12 +531,18 @@ def test_get_context_api_error(run, tools, api):
 
 # brain_stats
 
+
 def test_stats_output(run, tools, api):
-    api.reply("GET", "/stats", body={
-        "total": 3, "by_source": {"cli": 1, "mcp": 2},
-        "top_topics": [{"topic": "qdrant", "count": 2}],
-        "top_people": [{"person": "Dana", "count": 1}],
-    })
+    api.reply(
+        "GET",
+        "/stats",
+        body={
+            "total": 3,
+            "by_source": {"cli": 1, "mcp": 2},
+            "top_topics": [{"topic": "qdrant", "count": 2}],
+            "top_people": [{"person": "Dana", "count": 1}],
+        },
+    )
     out = run(tools.brain_stats())
     assert "3 total entries" in out
     assert out.index("mcp: 2") < out.index("cli: 1")  # sorted by count, descending
@@ -448,7 +550,9 @@ def test_stats_output(run, tools, api):
 
 
 def test_stats_empty_brain(run, tools, api):
-    api.reply("GET", "/stats", body={"total": 0, "by_source": {}, "top_topics": [], "top_people": []})
+    api.reply(
+        "GET", "/stats", body={"total": 0, "by_source": {}, "top_topics": [], "top_people": []}
+    )
     assert run(tools.brain_stats()).strip() == "Brain Stats — 0 total entries"
 
 

@@ -52,7 +52,10 @@ def test_restore_with_null_or_empty(client, add):
     old, new = pair(add)
     for value in ("", None):
         supersede(client, old, new)
-        assert client.patch(f"/entries/{old}", json={"superseded_by": value}).json()["superseded_by"] is None
+        assert (
+            client.patch(f"/entries/{old}", json={"superseded_by": value}).json()["superseded_by"]
+            is None
+        )
         assert {r["id"] for r in search(client)} == {old, new}
     point = main.qdrant.retrieve(main.COLLECTION, [old], with_payload=True)[0]
     assert "superseded_by" not in point.payload

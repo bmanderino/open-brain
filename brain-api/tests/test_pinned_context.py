@@ -15,6 +15,7 @@ def ids(entries):
 
 # Pinning
 
+
 def test_ingest_pinned_is_stored_and_returned(client, add):
     data = add("always use pnpm", pinned=True)
     assert data["pinned"] is True
@@ -81,6 +82,7 @@ def test_import_without_pinned_key_means_unpinned(client):
 
 # /context
 
+
 def context(client, **params):
     resp = client.get("/context", params=params)
     assert resp.status_code == 200, resp.text
@@ -131,7 +133,10 @@ def test_context_caps_pinned_and_reports_total(client):
 
 def test_context_recent_zero_and_empty_brain(client):
     assert context(client, recent=0) == {
-        "project": None, "pinned": [], "pinned_total": 0, "recent": [],
+        "project": None,
+        "pinned": [],
+        "pinned_total": 0,
+        "recent": [],
     }
 
 

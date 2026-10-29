@@ -70,6 +70,7 @@ def test_after_and_before_window(client):
 
 # Filters
 
+
 def test_project_filter_includes_unscoped_by_default(client, add):
     add("in foo", project="foo")
     add("in bar", project="bar")

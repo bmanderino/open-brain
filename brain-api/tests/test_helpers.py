@@ -56,7 +56,9 @@ def test_fuse_orders_by_rank_and_labels_sources():
     scores = {p.id: s for p, s, _ in out}
     assert scores["a"] == 0.9  # vector hits keep their own cosine
     assert scores["b"] == 0.5
-    assert scores["c"] == main.cosine(q, fake_embed("alpha beta"))  # keyword-only gets computed cosine
+    assert scores["c"] == main.cosine(
+        q, fake_embed("alpha beta")
+    )  # keyword-only gets computed cosine
     assert 0 < scores["c"] < 1
 
 

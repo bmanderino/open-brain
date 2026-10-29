@@ -64,6 +64,7 @@ def test_patch_reextract_repairs_failed_metadata(client, add, ollama):
 
 # Hand-edited metadata
 
+
 def test_patch_metadata_fields_only_changes_those(client, add, ollama):
     e = add("note")
     calls = (ollama.embed_calls, ollama.extract_calls)
@@ -82,7 +83,9 @@ def test_patch_empty_list_clears_metadata_field(client, add):
 
 def test_patch_null_metadata_fields_are_ignored(client, add):
     e = add("note")
-    r = client.patch(f"/entries/{e['id']}", json={"people": None, "type": None, "tags": ["x"]}).json()
+    r = client.patch(
+        f"/entries/{e['id']}", json={"people": None, "type": None, "tags": ["x"]}
+    ).json()
     assert r["type"] == "decision" and r["metadata_status"] == "ok"
 
 
@@ -96,16 +99,15 @@ def test_patch_invalid_type_rejected(client, add):
 def test_patch_metadata_lists_get_placeholder_cleanup(client, add):
     e = add("note")
     r = client.patch(
-        f"/entries/{e['id']}", json={"people": ["None mentioned", " Dana "], "action_items": ["none"]}
+        f"/entries/{e['id']}",
+        json={"people": ["None mentioned", " Dana "], "action_items": ["none"]},
     ).json()
     assert r["people"] == ["Dana"] and r["action_items"] == []
 
 
 def test_patch_manual_metadata_beats_extraction_in_same_request(client, add, ollama):
     e = add("old text")
-    r = client.patch(
-        f"/entries/{e['id']}", json={"content": "new text", "people": ["Dana"]}
-    ).json()
+    r = client.patch(f"/entries/{e['id']}", json={"content": "new text", "people": ["Dana"]}).json()
     assert r["people"] == ["Dana"]  # extraction returns people=[]; the hand edit wins
     assert r["topics"] == ["fake-topic"]  # other fields come from the fresh extraction
     assert r["metadata_status"] == "manual"

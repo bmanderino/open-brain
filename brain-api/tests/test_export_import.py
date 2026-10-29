@@ -24,8 +24,16 @@ def test_export_shape_and_no_vectors(client, add):
     add("one", project="p", tags=["t"])
     (line,) = export(client)
     assert set(line) == {
-        "id", "content", "source", "tags", "project", "pinned", "superseded_by", "created_at",
-        "metadata", "metadata_status",
+        "id",
+        "content",
+        "source",
+        "tags",
+        "project",
+        "pinned",
+        "superseded_by",
+        "created_at",
+        "metadata",
+        "metadata_status",
     }
     assert line["metadata"]["type"] == "decision"
 
@@ -100,8 +108,7 @@ def test_import_keeps_created_at_and_defaults_id(client):
 
 
 def test_import_skips_dedup_check(client):
-    r = do_import(client, [{"id": NEW_ID, "content": "same text"},
-                           {"content": "same text"}])
+    r = do_import(client, [{"id": NEW_ID, "content": "same text"}, {"content": "same text"}])
     assert r["imported"] == 2
 
 
